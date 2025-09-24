@@ -1,10 +1,24 @@
-# agent_step.py
-# Contains the logic for updating the agent state during one simulation step
+class Agent(ABC):
+    ...
+    @abstractmethod
+    def step(self, t: int) -> None:
+        """
+        Perform one simulation step.
+        To be implemented by subclasses.
+        """
+        pass
 
-def perform_step(agent, environment):
-    """
-    Perform one step for the agent.
-    Example: update position, apply chosen action, update internal state.
-    """
-    # Placeholder for step logic
-    pass
+
+class Wasp(Agent):
+    ...
+    def step(self, t: int) -> None:
+        """Wasp step: decideAction, then askForFood."""
+        self.decideAction()
+        self.askForFood()
+
+
+class Larvae(Agent):
+    ...
+    def step(self, t: int) -> None:
+        """Larvae step: only askForFood (no decideAction)."""
+        self.askForFood()

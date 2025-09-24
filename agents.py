@@ -1,23 +1,112 @@
 # agents.py
-# Defines the Agent class and its basic properties
+# Defines Agent (abstract), Wasp, and Larvae classes based on UML
 
-class Agent:
-    def __init__(self, name):
-        # Unique identifier for the agent
-        self.name = name
-        # Internal state or memory of the agent
-        self.state = {}
+from abc import ABC, abstractmethod
+from typing import List
+from enum import Enum
 
-    def decide_action(self, environment):
-        """
-        Decide what action to take based on the current environment.
-        This will call functions defined in agent_decide.py.
-        """
+
+# ---------------------------
+# Enums
+# ---------------------------
+class AgentType(Enum):
+    WASP = "Wasp"
+    LARVAE = "Larvae"
+
+class WaspRole(Enum):
+    FEEDER = "Feeder"
+    FORAGER = "Forager"
+
+
+# ---------------------------
+# Abstract Base Class
+# ---------------------------
+class Agent(ABC):
+    def __init__(self, agent_id: str, x: int, y: int, agent_type: AgentType, hunger: int = 0):
+        self.id: str = agent_id
+        self.x: int = x
+        self.y: int = y
+        self.type: AgentType = agent_type
+        self.hunger: int = hunger
+        self.storedEvents: List[str] = []
+
+    def getPosition(self) -> List[int]:
+        """Return the (x, y) position of the agent."""
+        return [self.x, self.y]
+
+    @abstractmethod
+    def generateEvent(self) -> str:
+        """Generate a new event (abstract)."""
         pass
 
-    def step(self, environment):
-        """
-        Perform one step of simulation.
-        This will call functions defined in agent_step.py.
-        """
+    def getType(self) -> AgentType:
+        """Return the type of this agent."""
+        return self.type
+
+    @abstractmethod
+    def step(self, t: int) -> None:
+        """Perform one step in the simulation (abstract)."""
         pass
+
+    def askForFood(self) -> None:
+        """Increase hunger and log a request for food."""
+        self.hunger += 1
+        self.storedEvents.append("Asked for food")
+
+
+# ---------------------------
+# Subclass: Wasp
+# ---------------------------
+class Wasp(Agent):
+    def __init__(self, agent_id: str, x: int, y: int, role: WaspRole, hunger: int = 0, food: int = 0):
+        super().__init__(agent_id, x, y, AgentType.WASP, hunger)
+        self.food: int = food
+        self.role: WaspRole = role
+
+    # Extra methods
+    def feed(self, larvae: "Larvae") -> None:
+        """Feed a larvae (placeholder)."""
+        if self.food > 0:
+            self.food -= 1
+            self.storedEvents.append(f"{self.id} fed larvae {larvae.id}")
+
+    def forage(self) -> None:
+        """Collect food from environment (placeholder)."""
+        self.food += 1
+        self.storedEvents.append(f"{self.id} foraged food")
+
+    def move(self) -> None:
+        """Move to another position (placeholder)."""
+        self.x += 1  # placeholder logic
+        self.y += 1
+        self.storedEvents.append(f"{self.id} moved to {self.getPosition()}")
+
+    def feelGradient(self, gradientField: List[tuple[int, int]]) -> None:
+        """Sense gradient field (placeholder)."""
+        self.storedEvents.append(f"{self.id} sensed gradient {gradientField}")
+
+    def decideAction(self) -> None:
+        """Decide what to do (placeholder)."""
+        self.storedEvents.append(f"{self.id} decided action")
+
+    # Implement abstract methods
+    def generateEvent(self) -> str:
+        return f"Wasp {self.id} event"
+
+    def step(self, t: int) -> None:
+        self.decideAction()
+
+
+# ---------------------------
+# Subclass: Larvae
+# ---------------------------
+class Larvae(Agent):
+    def __init__(self, agent_id: str, x: int, y: int, hunger: int = 0):
+        super().__init__(agent_id, x, y, AgentType.LARVAE, hunger)
+
+    # Implement abstract methods
+    def generateEvent(self) -> str:
+        return f"Larvae {self.id} event"
+
+    def step(self, t: int) -> None:
+        self.askForFood()
