@@ -20,10 +20,10 @@ def main():
     w2 = Wasp(agent_id="W2", x=2, y=2, role=WaspRole.FORAGER, food=1)
     
     # Larvae L1 at position (5,5)
-    l1 = Larvae(agent_id="L1", x=5, y=5)
+    l1 = Larvae(agent_id="L1", x=5, y=5, hunger = 5)
     
     # Larvae L2 at position (6,6)
-    l2 = Larvae(agent_id="L2", x=6, y=6)
+    l2 = Larvae(agent_id="L2", x=6, y=6,  hunger = 5)
 
     # Add all agents to the simulator
     sim.addAgent(w1)
@@ -32,7 +32,7 @@ def main():
     sim.addAgent(l2)
 
     # Run simulation for T steps
-    T = 5
+    T = 100
     report = sim.runSimulation(T)
 
     # Print results
@@ -43,6 +43,12 @@ def main():
     for key, value in report.items():
         print(f"{key}: {value}")
 
+    # Debug logs
+    print("\nEvent logs:")
+    for agent in sim.agents:
+        print(f"{agent.id} ({agent.type.value}):")
+        for e in agent.storedEvents:
+            print("  ", e)
 
 if __name__ == "__main__":
     main()

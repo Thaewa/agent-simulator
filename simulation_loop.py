@@ -4,6 +4,8 @@
 from typing import List, Dict
 from simulator import Simulator
 from agents import Wasp, Larvae
+from agent_decide import decide_action
+from agent_step import execute_action
 
 class SimulationError(Exception):
     """Custom exception for simulation errors."""
@@ -45,11 +47,18 @@ class SimulationLoop(Simulator):
             j = 0
             while j < len(self.agents):
                 agent = self.agents[j]
+
                 # UML: agent feels gradient (placeholder: pass None)
                 if isinstance(agent, Wasp):
-                    agent.feelGradient([])  # attractorGradients not defined yet
-                # Step simulation for this agent
-                agent.step(self.currentTime)
+                     agent.feelGradient([])
+
+                # NEW: Decide and take action
+                action = decide_action(agent, {"agents": self.agents})
+                execute_action(agent, action, self)
+                # track movement only if changed
+                current_pos = agent.getPosition()
+                if self.movementHistory[agent.id][-1] != current_pos:
+                    self.movementHistory[agent.id].append(current_pos)
                 j += 1
 
             # Advance time

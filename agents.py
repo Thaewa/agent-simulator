@@ -92,7 +92,6 @@ class Agent(ABC):
         self.hunger += 1
         self.storedEvents.append("Asked for food")
 
-
 # ---------------------------
 # Subclass: Wasp
 # ---------------------------
@@ -109,15 +108,20 @@ class Wasp(Agent):
         self.role: WaspRole = role
 
     # Extra methods
-    def feed(self, larvae: "Larvae") -> None:
+    def feed(self, target) -> None:
         """
         Feed a larvae by giving it one unit of food (if available).
-        Args:
-            larvae (Larvae): The larvae to feed.
         """
         if self.food > 0:
             self.food -= 1
-            self.storedEvents.append(f"{self.id} fed larvae {larvae.id}")
+            if isinstance(target, Larvae):
+                target.hunger = max(0, target.hunger - 7)
+                self.storedEvents.append(f"{self.id} fed {target.id}")
+            elif isinstance(target, Wasp) and target.role == WaspRole.FEEDER:
+                target.food += 1
+                self.storedEvents.append(f"{self.id} fed {target.id} (transfer)")
+        else:
+            self.storedEvents.append(f"{self.id} tried to feed {target.id} but had no food")
 
     def forage(self) -> None:
         """
@@ -127,14 +131,20 @@ class Wasp(Agent):
         self.food += 1
         self.storedEvents.append(f"{self.id} foraged food")
 
-    def move(self) -> None:
+    def move(self, simulator=None) -> None:
         """
         Move to a new position in the environment.
         (Placeholder: increments x and y by 1.)
         """
-        self.x += 1  # placeholder logic
+        old_pos = self.getPosition()
+        self.x += 1
         self.y += 1
-        self.storedEvents.append(f"{self.id} moved to {self.getPosition()}")
+        new_pos = self.getPosition()
+
+        if simulator and new_pos != old_pos:
+            simulator.movementHistory[self.id].append(new_pos)
+
+        self.storedEvents.append(f"{self.id} moved to {new_pos}")
 
     def feelGradient(self, gradientField: List[tuple[int, int]]) -> None:
         """
@@ -169,6 +179,40 @@ class Wasp(Agent):
         """
         self.decideAction()
 
+    def transfer_food(self, feeder: "Wasp") -> None:
+        """
+        Transfer one unit of food to a feeder wasp.
+        Used when this wasp is a Forager.
+        """
+        if self.food > 0 and feeder.role == WaspRole.FEEDER:
+            self.food -= 1
+            feeder.food += 1
+            self.storedEvents.append(f"{self.id} transferred food to {feeder.id}")
+        else:
+            self.storedEvents.append(f"{self.id} tried to transfer food but failed")
+
+    def move_towards(self, target: Agent, simulator=None) -> None:
+        """
+        Move one step towards the target agent.
+        """
+        if self.x < target.x:
+            self.x += 1
+        elif self.x > target.x:
+            self.x -= 1
+
+        if self.y < target.y:
+            self.y += 1
+        elif self.y > target.y:
+            self.y -= 1
+
+        # ถ้ามี simulator ให้ log เฉพาะตอนที่มีการเคลื่อนจริง
+        if simulator:
+            simulator.movementHistory[self.id].append(self.getPosition())
+
+        self.storedEvents.append(
+            f"{self.id} moved towards {target.id} → {self.getPosition()}"
+        )
+
 
 # ---------------------------
 # Subclass: Larvae
@@ -197,4 +241,9 @@ class Larvae(Agent):
         Args:
             t (int): Current simulation time.
         """
-        self.askForFood()
+        # Set hunger threshold as 3
+        if self.hunger > 3:
+            self.askForFood()
+        else:
+            # Log that Larvae is full / not hungry
+            self.storedEvents.append(f"{self.id} is full at time {t}")

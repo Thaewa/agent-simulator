@@ -1,24 +1,40 @@
-class Agent(ABC):
-    ...
-    @abstractmethod
-    def step(self, t: int) -> None:
-        """
-        Perform one simulation step.
-        To be implemented by subclasses.
-        """
-        pass
+# agent_step.py
+# Executes actions decided by agent_decide.py
 
+from agents import Wasp, Larvae, WaspRole
 
-class Wasp(Agent):
-    ...
-    def step(self, t: int) -> None:
-        """Wasp step: decideAction, then askForFood."""
-        self.decideAction()
-        self.askForFood()
+def execute_action(agent, action: dict, simulator=None) -> None:
+    """
+    Execute the action returned from agent_decide.decide_action().
+    simulator: pass simulator reference for logging movements
+    """
 
+    act = action.get("action", "idle")
 
-class Larvae(Agent):
-    ...
-    def step(self, t: int) -> None:
-        """Larvae step: only askForFood (no decideAction)."""
-        self.askForFood()
+    # Larvae behavior
+    if isinstance(agent, Larvae):
+        if act == "ask_food":
+            agent.askForFood()
+        else:
+            agent.storedEvents.append(f"{agent.id} stayed idle")
+
+    # Wasp behavior
+    elif isinstance(agent, Wasp):
+        if act == "forage":
+            agent.forage()
+        elif act == "feed":
+            target = action.get("target")
+            if target:
+                agent.feed(target)
+        elif act == "transfer":
+            target = action.get("target")
+            if target:
+                agent.transfer_food(target)
+        elif act == "move_to":
+            target = action.get("target")
+            if target:
+                agent.move_towards(target, simulator)
+        elif act == "idle":
+            agent.storedEvents.append(f"{agent.id} idled")
+        else:
+            agent.storedEvents.append(f"{agent.id} unknown action: {act}")

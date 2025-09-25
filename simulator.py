@@ -18,6 +18,7 @@ class Simulator:
         """
         self.currentTime: int = 0
         self.agents: List[Agent] = []
+        self.movementHistory: Dict[str, List[List[int]]] = {}
 
     # ---------------------------
     # Core methods
@@ -35,6 +36,9 @@ class Simulator:
     def addAgent(self, agent: Agent) -> None:
         """Add a new agent to the simulation."""
         self.agents.append(agent)
+        
+        # initialize movement history with starting position
+        self.movementHistory[agent.id] = [agent.getPosition()]
 
     def addForage(self, x: int, y: int) -> None:
         """
@@ -58,14 +62,27 @@ class Simulator:
         Collect movement data for all agents.
         Returns {agent_id: [(x, y), ...]}
         """
-        return {a.id: [a.getPosition()] for a in self.agents}
+        #for agent in self.agents:
+        #    self.movementHistory[agent.id].append(agent.getPosition())
+        return self.movementHistory
 
-    def aggregateFeedLarvae(self) -> Dict[int, List[int]]:
+    def aggregateFeedLarvae(self) -> dict:
         """
-        Collect feeding data.
-        Placeholder: return empty structure.
+        Collect all feeding events performed by wasps.
+        Returns:
+            dict: {wasp_id: [list of larvae fed]}
         """
-        return {a.id: [] for a in self.agents if isinstance(a, Wasp)}
+        result = {}
+        for agent in self.agents:
+            if isinstance(agent, Wasp):
+                result[agent.id] = {}
+                for event in agent.storedEvents:
+                    if "fed" in event:
+                        parts = event.split()
+                        if len(parts) >= 3:
+                            target = parts[2]
+                            result[agent.id][target] = result[agent.id].get(target, 0) + 1
+        return result
 
     def aggregateHungerLarvae(self) -> Dict[int, List[int]]:
         """Collect hunger values for larvae agents."""
