@@ -11,6 +11,17 @@ class SimulationError(Exception):
 
 
 class SimulationLoop(Simulator):
+    """
+    Extends the base Simulator with a detailed runSimulation loop
+    defined by the UML activity diagram.
+    
+    Responsibilities:
+        - Verify if simulation conditions are valid before running.
+        - Execute simulation steps across multiple time units.
+        - Handle agent interactions (e.g., wasps feeling gradients).
+        - Produce a report that aggregates movements, feeding,
+          and hunger data after simulation.
+    """
     def verifySimulationConditions(self) -> bool:
         """
         Verify if the simulation can start.

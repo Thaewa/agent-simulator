@@ -5,7 +5,17 @@ from typing import List, Dict
 from agents import Agent, Wasp, Larvae
 
 class Simulator:
+    """
+    Simulator class that manages a collection of agents and coordinates the simulation.
+    Responsible for advancing time, handling agents, and aggregating results.
+    """
     def __init__(self):
+        """
+        Initialize the simulator.
+        Attributes:
+            currentTime (int): Current time step of the simulation.
+            agents (List[Agent]): List of all agents participating in the simulation.
+        """
         self.currentTime: int = 0
         self.agents: List[Agent] = []
 
