@@ -3,6 +3,9 @@
 
 from typing import List, Dict
 from agents import Agent, Wasp, Larvae
+from agents import AgentType, WaspRole
+import numpy as np
+from utils import gaussian_attraction
 
 class Simulator:
     """
@@ -19,7 +22,9 @@ class Simulator:
         self.currentTime: int = 0
         self.agents: List[Agent] = []
         self.movementHistory: Dict[str, List[List[int]]] = {}
-
+        self.gradients = {WaspRole.FEEDER:[],WaspRole.FORAGER:[]}
+        self.grid = None
+        self.forage = []
     # ---------------------------
     # Core methods
     # ---------------------------
@@ -45,8 +50,8 @@ class Simulator:
         Add a foraging location (placeholder).
         UML shows this, but details depend on environment model.
         """
-        # TODO: implement environment/foraging logic
-        pass
+        self.forage.append(np.array(x,y))
+        
 
     def removeAgent(self, agent: Agent) -> None:
         """Remove an agent from the simulation."""
@@ -54,8 +59,26 @@ class Simulator:
             self.agents.remove(agent)
 
     def accumulateGradients(self) -> None:
-        """Placeholder: accumulate gradient fields (not specified in UML)."""
-        pass
+        
+        agents = self.agents
+        for agent in agents:
+            x0,y0 = agent.getPosition()
+            spread = agent.radius
+            peak = agent.hunger/agent.food
+            gradient = gaussian_attraction(self.grid[:,0],self.grid[:,1],x0,y0,spread,peak)
+            type = agent.type
+            if type == AgentType.WASP:
+                role = agent.role
+            if type == AgentType.LARVAE:
+                self.gradients[WaspRole.FEEDER]=self.gradients[WaspRole.FEEDER]+gradient
+                self.gradients[WaspRole.FORAGER]=self.gradients[WaspRole.FORAGER]+gradient
+            if type == AgentType.WASP:
+                if role == WaspRole.FORAGER:
+                    self.gradients[WaspRole.FEEDER]= self.gradients[WaspRole.FEEDER]+gradient
+                else:
+                    # Modify if feeders also attract forager but for now only foragers attract feeders
+                    # self.gradients[WaspRole.FORAGER]= self.gradients[WaspRole.FORAGER]+gradient
+                    pass
 
     def aggregateMovements(self) -> Dict[int, List[tuple[int, int]]]:
         """

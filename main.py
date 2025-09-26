@@ -14,16 +14,16 @@ def main():
     # Create agents (example initialization)
     
     # Wasp W1 at position (0,0), role=Feeder, starts with 3 food
-    w1 = Wasp(agent_id="W1", x=0, y=0, role=WaspRole.FEEDER, food=3)
+    w1 = Wasp(agent_id="W1", x=0, y=0, role=WaspRole.FEEDER, food=3, hunger = 1)
     
     # Wasp W2 at position (2,2), role=Forager, starts with 1 food
-    w2 = Wasp(agent_id="W2", x=2, y=2, role=WaspRole.FORAGER, food=1)
+    w2 = Wasp(agent_id="W2", x=1, y=1, role=WaspRole.FORAGER, food=1,hunger= 1)
     
     # Larvae L1 at position (5,5)
-    l1 = Larvae(agent_id="L1", x=5, y=5, hunger = 5)
+    l1 = Larvae(agent_id="L1", x=5, y=5, hunger = 5,food=3)
     
     # Larvae L2 at position (6,6)
-    l2 = Larvae(agent_id="L2", x=6, y=6,  hunger = 5)
+    l2 = Larvae(agent_id="L2", x=6, y=6,  hunger = 5, food=3)
 
     # Add all agents to the simulator
     sim.addAgent(w1)
