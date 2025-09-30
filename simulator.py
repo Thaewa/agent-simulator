@@ -261,9 +261,6 @@ class Simulator:
 
                 # If the agent is a wasp, perform the following steps
                 if isinstance(agent, Wasp):
-                    # Get the positions of all larvae agents
-                    position_larvae = [agent_.getPosition() for agent_ in self.agents if isinstance(agent_, Larvae)]
-
                     # Get a list of all wasp agents (excluding the current agent)
                     position_wasp = [agent_ for agent_ in self.agents if isinstance(agent_, Wasp) and agent != agent_]
 
@@ -280,7 +277,7 @@ class Simulator:
                         agent.step(self.agents,self.forage)
                     # If the wasp agent is a FEEDER, feel the gradient of the larvae and wasp agents
                     elif agent.role == WaspRole.FEEDER:
-                        agent.feelGradient(self.grid,self.gradients,larvaePositions=position_larvae,waspPositions=position_wasp,foragersPositions=position_foragers)
+                        agent.feelGradient(self.grid,self.gradients,foragersPositions=position_foragers)
                         # Move the wasp agent based on the gradient
                         agent.step(self.agents)
 

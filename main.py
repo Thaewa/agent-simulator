@@ -4,8 +4,7 @@
 # Import agent classes (Wasp, Larvae, and WaspRole enum)
 from agents import Wasp, Larvae, WaspRole
 # Import Simulator
-from simulation_loop import Simulator
-
+from simulator import Simulator
 
 def main():
     # Create the simulator (controller of the whole simulation process)

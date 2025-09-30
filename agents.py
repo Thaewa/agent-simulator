@@ -43,6 +43,9 @@ class Agent(ABC):
         type (AgentType): The type of agent (Wasp or Larvae).
         hunger (int): Hunger level of the agent.
         storedEvents (List[str]): Log of events performed by the agent.
+        radius (int): The radius of the agent.
+        food (int): The amount of food currently stored by the agent.
+        hungerRate (float): The rate at which the agent's hunger level increases.
     """
     def __init__(self, agent_id: str, x: int, y: int, agent_type: AgentType, hunger: int = 0, food: int=0, radius: int =5):
         self.id: str = agent_id
@@ -80,35 +83,45 @@ class Agent(ABC):
             AgentType: Type of the agent (Wasp or Larvae).
         """
         return self.type
-
-    @abstractmethod
+    
     def step(self, t: int) -> None:
         """
         Perform one simulation step for this agent.
-        Abstract method: must be implemented by subclasses.
+        Optional abstract method: may be implemented by subclasses.
         Args:
             t (int): Current simulation time.
         """
         pass
-
-    # def askForFood(self) -> None:
-    #     """
-    #     Increase hunger level and log a request for food.
-    #     Called every step for larvae and optionally for wasps.
-    #     """
-    #     self.hunger += self.hungerRate
-    #     self.storedEvents.append("Asked for food")
 
 # ---------------------------
 # Subclass: Wasp
 # ---------------------------
 class Wasp(Agent):
     """
-    Represents a wasp agent.
+    Represents a wasp agent in the simulation.
+
     Attributes:
         food (int): Amount of food the wasp currently holds.
         role (WaspRole): Role of the wasp (Feeder or Forager).
+        smellRadius (int): Radius of the smell perception of the wasp.
+        smellIntensity (float): Intensity of the smell perception of the wasp.
+        next_step (dict): Next step of the wasp in the simulation.
+        chanceOfFeeding (float): Chance of feeding the larvae.
+        forageIncrease (int): Amount of food the wasp gains from foraging.
+        maxFood (int): Maximum amount of food the wasp can hold.
+        chanceOfForaging (float): Chance of foraging.
+        foodTransferToWasp (int): Amount of food transferred to the wasp.
+        foodTransferToLarvae (int): Amount of food transferred to the larvae.
+
+    Methods:
+        feed(target: Agent): Feed an agent by giving it one unit of food (if available).
+        forage(forage: List[np.ndarray]): Move towards foraging points.
+        step(t: int): Perform one simulation step for this wasp.
+        generateEvent(): Generate a new event string.
+        move(simulator=None): Move to a new position in the environment.
+        feelGradient(grid: np.ndarray, gradientField: Dict[WaspRole, np.ndarray]): Sense gradient field (e.g., pheromone trail or resource gradient).
     """
+
     def __init__(self, agent_id: str, x: int, y: int, role: WaspRole, hunger: int = 0, food: int = 0):
         super().__init__(agent_id, x, y, AgentType.WASP, hunger, food)
         self.role: WaspRole = role
@@ -126,6 +139,10 @@ class Wasp(Agent):
     def feed(self, target:Agent) -> None:
         """
         Feed an agent by giving it one unit of food (if available).
+        If the target is a larvae, the wasp will transfer food to the larvae.
+        If the target is a wasp, the wasp will transfer food to the target wasp.
+        Args:
+            target (Agent): The agent to feed.
         """
         passed_food = self.foodTransferToLarvae if target.type == AgentType.LARVAE else self.foodTransferToWasp
         if self.food > passed_food:
@@ -140,10 +157,20 @@ class Wasp(Agent):
             self.storedEvents.append(f"{self.id} tried to feed {target.id} but had no food")
 
     def forage(self,forage: List[np.ndarray]) -> None:
+        
         """
-        Collect food from the environment.
-        (Placeholder: simply increases food by 1.)
+        Move towards foraging points.
+
+        Args:
+            forage (List[np.ndarray]): List of foraging points in the environment.
+
+        If the wasp is within the smell radius of a foraging point and the chance of foraging is greater than a random number, 
+        the wasp will move towards the foraging point and gain food. The amount of food gained is equal to the foraging increase attribute of the wasp.
+
+        The wasp will also generate an event string indicating that it foraged food at the given location.
+
         """
+
         forage=np.array(forage)
         idx = self.nearbyEntity(forage)
         if idx.shape[0]>0 :
@@ -153,28 +180,47 @@ class Wasp(Agent):
                     self.hunger = 1
                     self.storedEvents.append(f"{self.id} is in location {self.getPosition()} and foraged food at location {forage[id]}")
 
-    def move(self, simulator=None) -> None:
+    def move(self) -> None:
+        
         """
-        Move to a new position in the environment.
-        (Placeholder: increments x and y by 1.)
+        Move the agent by one step in the direction specified by the next_step attribute.
+
+        
+        The agent will also generate an event string indicating that it moved to a new location.
+
         """
-        old_pos = self.getPosition()
         self.x += self.next_step['x']
         self.y += self.next_step['y']
         new_pos = self.getPosition()
         self.next_step = {'x': 0, 'y': 0}
-        if simulator and new_pos != old_pos:
-            simulator.movementHistory[self.id].append(new_pos)
-        self.storedEvents.append(f"{self.id} moved to {new_pos} current hunger level is {self.hunger} and food stored is {self.food}")
+        self.storedEvents.append(f"{self.id} moved to {new_pos} current hunger level is {format(self.hunger, '.2f')} and food stored is {format(self.food, '.2f')}")
 
     def feelGradient(self, grid: np.ndarray, gradientField: Dict[WaspRole, np.ndarray], forage: List[tuple[float, float]]=None,\
-                      larvaePositions: List[np.ndarray] = None,waspPositions:List[np.ndarray]=None,foragersPositions:List[np.ndarray]=None) -> None:
+                      foragersPositions:List[np.ndarray]=None) -> None:
+        
         """
-        Sense gradient field (e.g., pheromone trail or resource gradient).
+        Feel the gradient of the environment.
+
+        If the wasp has not enough food (i.e., less than the hunger rate times 10), it will ignore the larvae gradient field.
+        If the wasp is a forager and has not enough food, it will also add the pheromone trail of the foraging points to the gradient field.
+        If the wasp is a feeder and has not enough food, it will also add the pheromone trail of the forager wasps to the gradient field.
+
+        The wasp will then move in the direction of the gradient of the modified gradient field.
+
         Args:
-            gradientField (List[tuple[int, int]]): Placeholder gradient data.
+            grid (np.ndarray): 2D NumPy array representing the grid.
+            gradientField (Dict[WaspRole, np.ndarray]): Dictionary mapping each WaspRole to its gradient values.
+            forage (List[tuple[float, float]], optional): List of foraging points in the environment. Defaults to None.
+            foragersPositions (List[np.ndarray], optional): List of forager wasps' positions in the environment. Defaults to None.
+
+        Returns:
+            None
         """
+
+        # Initialize the felt gradient to zero if the wasp does not have enough food
         feltGradient = np.zeros_like(gradientField[self.role]) if self.food<(self.hungerRate*10) else gradientField[self.role].copy()
+        
+        # If the wasp is a forager and does not have enough food, add the pheromone trail of the foraging points to the gradient field
         if self.role == WaspRole.FORAGER and self.food<(self.hungerRate*10):
             for forage_position in forage:
                 x0,y0 = forage_position
@@ -182,6 +228,8 @@ class Wasp(Agent):
                 peak = (self.hunger/max(self.food,0.1))/self.smellIntensity
                 gradient = gaussian_attraction(grid[:,0],grid[:,1],x0,y0,spread,peak)
                 feltGradient = feltGradient + gradient
+        
+        # If the wasp is a feeder and does not have enough food, add the pheromone trail of the forager wasps to the gradient field
         if self.role == WaspRole.FEEDER and self.food<(self.hungerRate*10):
             for forager_position in foragersPositions:
                 x0,y0 = forager_position
@@ -190,62 +238,21 @@ class Wasp(Agent):
                 gradient = gaussian_attraction(grid[:,0],grid[:,1],x0,y0,spread,peak)
                 feltGradient = feltGradient + gradient
             
+        # Estimate the gradient of the modified gradient field
         dZdx, dZdy = estimate_gradient(grid, feltGradient)
         dZ = np.column_stack((dZdx, dZdy))
         mask = np.all(grid == np.array([self.x,self.y]).ravel(), axis=1)
         idx = np.flatnonzero(mask)
         sign_displacement = np.sign(dZ[idx])
         
-        # if self.role ==WaspRole.FEEDER:
-            # fig,axs = plt.subplots(1,3)
-            # x_unique = np.unique(grid[:,0])
-            # y_unique = np.unique(grid[:,1])
-            # X,Y = np.meshgrid(x_unique,y_unique)
-            # z = feltGradient.reshape(x_unique.shape[0],y_unique.shape[0])
-            # contour0 = axs[0].contourf(X, Y, z, alpha=0.5,levels=10)
-            # axs[0].scatter(self.x, self.y, c='r')
-            # if larvaePositions is not None:
-            #     for larvae in larvaePositions:
-            #         axs[0].scatter(larvae[0], larvae[1], c='black',marker='x')
-            # if waspPositions is not None:
-            #     for wasp in waspPositions:
-            #         axs[0].scatter(wasp[0], wasp[1], c='b',marker='.')
-            # fig.colorbar(contour0, ax=axs[0])
-            
-            # zx = dZdx.reshape(x_unique.shape[0],y_unique.shape[0])
-            # contour1 =axs[1].contourf(X, Y, zx, alpha=0.5)
-            # axs[1].scatter(self.x, self.y, c='r')
-            # if larvaePositions is not None:
-            #     for larvae in larvaePositions:
-            #         axs[1].scatter(larvae[0], larvae[1], c='black',marker='x')
-            # if waspPositions is not None:
-            #     for wasp in waspPositions:
-            #         axs[1].scatter(wasp[0], wasp[1], c='b',marker='.')
-            # zy = dZdy.reshape(x_unique.shape[0],y_unique.shape[0])
-            # contour2 =axs[2].contourf(X, Y, zy, alpha=0.5)
-            # axs[2].scatter(self.x, self.y, c='r')
-            # if larvaePositions is not None:
-            #     for larvae in larvaePositions:
-            #         axs[2].scatter(larvae[0], larvae[1], c='black',marker='x')
-            # if waspPositions is not None:
-            #     for wasp in waspPositions:
-            #         axs[2].scatter(wasp[0], wasp[1], c='b',marker='.')
-            # fig.colorbar(contour2, ax=axs[2])
-            # plt.show()
+        # Update the next step of the wasp based on the sign of the displacement
         self.next_step[list(self.next_step.keys())[0]] += sign_displacement[0,0].item()
         self.next_step[list(self.next_step.keys())[1]] += sign_displacement[0,1].item()
         
-        
+        # Log the event of sensing the gradient
         self.storedEvents.append(f"{self.id} sensed gradient ")
 
-    def decideAction(self) -> None:
-        """
-        Decide what to do in this step.
-        Currently placeholder: logs the decision event.
-        """
-        self.storedEvents.append(f"{self.id} decided action")
-
-    # Implement abstract methods
+   
     def generateEvent(self) -> str:
         """
         Generate a wasp-specific event string.
@@ -270,8 +277,15 @@ class Wasp(Agent):
         return idx
     
     def feedNearby(self, agents) -> None:
+        
         """
-        Feed nearby agents.
+        Feed nearby agents if the chance of feeding is greater than a random number.
+
+        Args:
+            agents (List[Agent]): List of agents to check for feeding.
+
+        Returns:
+            None
         """
         agents_position = np.array([agent.getPosition() for agent in agents])
         idx = self.nearbyEntity(agents_position)
@@ -282,15 +296,25 @@ class Wasp(Agent):
         
 
     def step(self,agents,forage=None) -> None:
+        
+        
         """
-        Perform one step of simulation for the wasp.
-        Calls decideAction and optionally other actions.
+        Advance the wasp's state by one time step.
+
+        If the wasp is a forager and has food, it will feed nearby wasp feeders and larvae.
+        If the wasp is a feeder and has food, it will feed nearby larvae.
+        If the wasp is a forager, it will also search for food in the nearby area.
+
+        Args:
+            agents (List[Agent]): List of all agents in the simulation.
+            forage (List[tuple[float, float]], optional): List of foraging points in the simulation. Defaults to None.
+
+        Returns:
+            None
         """
-        # Case 1: Forager
         wasps = [agent for agent in agents if agent.type == AgentType.WASP]
         wasps_feeders =[wasp for wasp in wasps if wasp.role == WaspRole.FEEDER]
         larvaes = [agent for agent in agents if agent.type == AgentType.LARVAE]
-        wasps_foragers = [wasp for wasp in wasps if wasp.role == WaspRole.FORAGER]
         net_receivers = wasps_feeders + larvaes
         if self.food > 0:
             if self.role == WaspRole.FORAGER:
@@ -300,29 +324,6 @@ class Wasp(Agent):
         if self.role == WaspRole.FORAGER:
                 self.forage(forage)
         self.move()
-        
-    def move_towards(self, target: Agent, simulator=None) -> None:
-        """
-        Move one step towards the target agent.
-        """
-        if self.x < target.x:
-            self.x += 1
-        elif self.x > target.x:
-            self.x -= 1
-
-        if self.y < target.y:
-            self.y += 1
-        elif self.y > target.y:
-            self.y -= 1
-
-        # ถ้ามี simulator ให้ log เฉพาะตอนที่มีการเคลื่อนจริง
-        if simulator:
-            simulator.movementHistory[self.id].append(self.getPosition())
-
-        self.storedEvents.append(
-            f"{self.id} moved towards {target.id} → {self.getPosition()} hunger is {self.hunger} and food stored is {self.food}"
-        )
-
 
 # ---------------------------
 # Subclass: Larvae
@@ -343,17 +344,3 @@ class Larvae(Agent):
             str: Event description.
         """
         return f"Larvae {self.id} event"
-
-    def step(self, t: int) -> None:
-        """
-        Perform one step of simulation for the larvae.
-        Larvae always ask for food.
-        Args:
-            t (int): Current simulation time.
-        """
-        # Set hunger threshold as 3
-        if self.hunger > 3:
-            self.askForFood()
-        else:
-            # Log that Larvae is full / not hungry
-            self.storedEvents.append(f"{self.id} is full at time {t}")
