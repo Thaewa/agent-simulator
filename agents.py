@@ -7,7 +7,7 @@ from enum import Enum
 from utils import gaussian_attraction,estimate_gradient
 import numpy as np
 import random
-from simulator import Simulator
+import matplotlib.pyplot as plt
 # ---------------------------
 # Enums
 # ---------------------------
@@ -91,13 +91,13 @@ class Agent(ABC):
         """
         pass
 
-    def askForFood(self) -> None:
-        """
-        Increase hunger level and log a request for food.
-        Called every step for larvae and optionally for wasps.
-        """
-        self.hunger += 1
-        self.storedEvents.append("Asked for food")
+    # def askForFood(self) -> None:
+    #     """
+    #     Increase hunger level and log a request for food.
+    #     Called every step for larvae and optionally for wasps.
+    #     """
+    #     self.hunger += self.hungerRate
+    #     self.storedEvents.append("Asked for food")
 
 # ---------------------------
 # Subclass: Wasp
@@ -112,21 +112,26 @@ class Wasp(Agent):
     def __init__(self, agent_id: str, x: int, y: int, role: WaspRole, hunger: int = 0, food: int = 0):
         super().__init__(agent_id, x, y, AgentType.WASP, hunger, food)
         self.role: WaspRole = role
-        self.smellRadius: int = 5
-        self.smellIntensity: float = 1.0
+        self.smellRadius: int = 10
+        self.smellIntensity: float = 5.0
         self.next_step = {'x': 0, 'y': 0}
         self.chanceOfFeeding: float = 0.3
         self.forageIncrease: int = 10
         self.maxFood: int = 20
         self.chanceOfForaging: float = 0.3
+        self.foodTransferToWasp: int = 5
+        self.foodTransferToLarvae: int = 1
+
     # Extra methods
     def feed(self, target:Agent) -> None:
         """
         Feed an agent by giving it one unit of food (if available).
         """
-        if self.food > 0:
-            self.food -= 1
-            target.food += 1
+        passed_food = self.foodTransferToLarvae if target.type == AgentType.LARVAE else self.foodTransferToWasp
+        if self.food > passed_food:
+            self.food -= passed_food
+            target.food += passed_food
+            target.hunger = 1
             if isinstance(target, Larvae):
                 self.storedEvents.append(f"{self.id} fed {target.id}")
             elif isinstance(target, Wasp) and target.role == WaspRole.FEEDER:
@@ -143,11 +148,12 @@ class Wasp(Agent):
         idx = self.nearbyEntity(forage)
         if idx.shape[0]>0 :
             for id in idx:
-                if random.random()>self.chanceOfForaging and self.food<self.maxFood:
+                if random.random()>self.chanceOfForaging and self.food+self.forageIncrease<self.maxFood:
                     self.food += self.forageIncrease
-        self.storedEvents.append(f"{self.id} foraged food")
+                    self.hunger = 1
+                    self.storedEvents.append(f"{self.id} is in location {self.getPosition()} and foraged food at location {forage[id]}")
 
-    def move(self, simulator:Simulator=None) -> None:
+    def move(self, simulator=None) -> None:
         """
         Move to a new position in the environment.
         (Placeholder: increments x and y by 1.)
@@ -159,30 +165,78 @@ class Wasp(Agent):
         self.next_step = {'x': 0, 'y': 0}
         if simulator and new_pos != old_pos:
             simulator.movementHistory[self.id].append(new_pos)
-        self.storedEvents.append(f"{self.id} moved to {new_pos}")
+        self.storedEvents.append(f"{self.id} moved to {new_pos} current hunger level is {self.hunger} and food stored is {self.food}")
 
-    def feelGradient(self, grid: np.ndarray, gradientField: Dict[WaspRole, np.ndarray], forage: List[tuple[float, float]]=None) -> None:
+    def feelGradient(self, grid: np.ndarray, gradientField: Dict[WaspRole, np.ndarray], forage: List[tuple[float, float]]=None,\
+                      larvaePositions: List[np.ndarray] = None,waspPositions:List[np.ndarray]=None,foragersPositions:List[np.ndarray]=None) -> None:
         """
         Sense gradient field (e.g., pheromone trail or resource gradient).
         Args:
             gradientField (List[tuple[int, int]]): Placeholder gradient data.
         """
-        feltGradient = gradientField[self.role].copy()
-        if self.role == WaspRole.FORAGER:
+        feltGradient = np.zeros_like(gradientField[self.role]) if self.food<(self.hungerRate*10) else gradientField[self.role].copy()
+        if self.role == WaspRole.FORAGER and self.food<(self.hungerRate*10):
             for forage_position in forage:
                 x0,y0 = forage_position
                 spread = self.smellRadius
                 peak = (self.hunger/max(self.food,0.1))/self.smellIntensity
                 gradient = gaussian_attraction(grid[:,0],grid[:,1],x0,y0,spread,peak)
                 feltGradient = feltGradient + gradient
+        if self.role == WaspRole.FEEDER and self.food<(self.hungerRate*10):
+            for forager_position in foragersPositions:
+                x0,y0 = forager_position
+                spread = self.smellRadius
+                peak = (self.hunger/max(self.food,0.1))/self.smellIntensity
+                gradient = gaussian_attraction(grid[:,0],grid[:,1],x0,y0,spread,peak)
+                feltGradient = feltGradient + gradient
+            
         dZdx, dZdy = estimate_gradient(grid, feltGradient)
         dZ = np.column_stack((dZdx, dZdy))
         mask = np.all(grid == np.array([self.x,self.y]).ravel(), axis=1)
         idx = np.flatnonzero(mask)
-        leading_displacement_index = np.argmax(dZ[idx,:])
-        sign_displacement = np.sign(dZ[idx,leading_displacement_index])
-        self.next_step[list(self.next_step.keys())[leading_displacement_index]] += sign_displacement.item()
-        self.storedEvents.append(f"{self.id} sensed gradient {feltGradient}")
+        sign_displacement = np.sign(dZ[idx])
+        
+        # if self.role ==WaspRole.FEEDER:
+            # fig,axs = plt.subplots(1,3)
+            # x_unique = np.unique(grid[:,0])
+            # y_unique = np.unique(grid[:,1])
+            # X,Y = np.meshgrid(x_unique,y_unique)
+            # z = feltGradient.reshape(x_unique.shape[0],y_unique.shape[0])
+            # contour0 = axs[0].contourf(X, Y, z, alpha=0.5,levels=10)
+            # axs[0].scatter(self.x, self.y, c='r')
+            # if larvaePositions is not None:
+            #     for larvae in larvaePositions:
+            #         axs[0].scatter(larvae[0], larvae[1], c='black',marker='x')
+            # if waspPositions is not None:
+            #     for wasp in waspPositions:
+            #         axs[0].scatter(wasp[0], wasp[1], c='b',marker='.')
+            # fig.colorbar(contour0, ax=axs[0])
+            
+            # zx = dZdx.reshape(x_unique.shape[0],y_unique.shape[0])
+            # contour1 =axs[1].contourf(X, Y, zx, alpha=0.5)
+            # axs[1].scatter(self.x, self.y, c='r')
+            # if larvaePositions is not None:
+            #     for larvae in larvaePositions:
+            #         axs[1].scatter(larvae[0], larvae[1], c='black',marker='x')
+            # if waspPositions is not None:
+            #     for wasp in waspPositions:
+            #         axs[1].scatter(wasp[0], wasp[1], c='b',marker='.')
+            # zy = dZdy.reshape(x_unique.shape[0],y_unique.shape[0])
+            # contour2 =axs[2].contourf(X, Y, zy, alpha=0.5)
+            # axs[2].scatter(self.x, self.y, c='r')
+            # if larvaePositions is not None:
+            #     for larvae in larvaePositions:
+            #         axs[2].scatter(larvae[0], larvae[1], c='black',marker='x')
+            # if waspPositions is not None:
+            #     for wasp in waspPositions:
+            #         axs[2].scatter(wasp[0], wasp[1], c='b',marker='.')
+            # fig.colorbar(contour2, ax=axs[2])
+            # plt.show()
+        self.next_step[list(self.next_step.keys())[0]] += sign_displacement[0,0].item()
+        self.next_step[list(self.next_step.keys())[1]] += sign_displacement[0,1].item()
+        
+        
+        self.storedEvents.append(f"{self.id} sensed gradient ")
 
     def decideAction(self) -> None:
         """
@@ -219,15 +273,15 @@ class Wasp(Agent):
         """
         Feed nearby agents.
         """
-        agents = np.array([agent.getPosition() for agent in agents])
-        idx = self.nearbyEntity(agents)
+        agents_position = np.array([agent.getPosition() for agent in agents])
+        idx = self.nearbyEntity(agents_position)
         if idx.shape[0]>0:
             for id in idx:
                 if random.random()>self.chanceOfFeeding:
                     self.feed(agents[id])
         
 
-    def step(self,agents,forage) -> None:
+    def step(self,agents,forage=None) -> None:
         """
         Perform one step of simulation for the wasp.
         Calls decideAction and optionally other actions.
@@ -246,21 +300,7 @@ class Wasp(Agent):
         if self.role == WaspRole.FORAGER:
                 self.forage(forage)
         self.move()
-        self.hunger += self.hungerRate
-        self.food -= self.hungerRate
-
-    def transfer_food(self, feeder: "Wasp") -> None:
-        """
-        Transfer one unit of food to a feeder wasp.
-        Used when this wasp is a Forager.
-        """
-        if self.food > 0 and feeder.role == WaspRole.FEEDER:
-            self.food -= 1
-            feeder.food += 1
-            self.storedEvents.append(f"{self.id} transferred food to {feeder.id}")
-        else:
-            self.storedEvents.append(f"{self.id} tried to transfer food but failed")
-
+        
     def move_towards(self, target: Agent, simulator=None) -> None:
         """
         Move one step towards the target agent.
@@ -280,7 +320,7 @@ class Wasp(Agent):
             simulator.movementHistory[self.id].append(self.getPosition())
 
         self.storedEvents.append(
-            f"{self.id} moved towards {target.id} → {self.getPosition()}"
+            f"{self.id} moved towards {target.id} → {self.getPosition()} hunger is {self.hunger} and food stored is {self.food}"
         )
 
 

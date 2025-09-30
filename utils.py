@@ -1,6 +1,6 @@
 import numpy as np
 def gaussian_attraction(x,y,x0,y0,spread,peak):
-    return np.exp(-peak*((x-x0)**2 + (y-y0)**2)/spread)
+    return peak*np.exp(-((x-x0)**2 + (y-y0)**2)/spread)
 
 def estimate_gradient(points, z, edge_order=2):
     """

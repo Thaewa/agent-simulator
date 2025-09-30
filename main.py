@@ -3,14 +3,16 @@
 
 # Import agent classes (Wasp, Larvae, and WaspRole enum)
 from agents import Wasp, Larvae, WaspRole
-# Import SimulationLoop which extends Simulator
-from simulation_loop import SimulationLoop
+# Import Simulator
+from simulation_loop import Simulator
 
 
 def main():
     # Create the simulator (controller of the whole simulation process)
-    sim = SimulationLoop()
-
+    sim = Simulator()
+    # Add forage 
+    sim.addForage(1,1)
+    sim.addForage(-3,2)
     # Create agents (example initialization)
     
     # Wasp W1 at position (0,0), role=Feeder, starts with 3 food

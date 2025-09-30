@@ -8,11 +8,6 @@ def decide_action(agent, environment):
     Rule-based decision logic for each agent.
     environment: dict that contains references to other agents.
     """
-
-    # Larva → always ask for food (or idle if hunger=0 handled in Larvae class)
-    if isinstance(agent, Larvae):
-        return {"action": "ask_food"}
-
     # Wasp
     if isinstance(agent, Wasp):
 
