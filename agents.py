@@ -287,6 +287,9 @@ class Wasp(Agent):
         Returns:
             None
         """
+        if not agents:   # <-- Prevent empty list bug
+            return
+    
         agents_position = np.array([agent.getPosition() for agent in agents])
         idx = self.nearbyEntity(agents_position)
         if idx.shape[0]>0:
@@ -295,34 +298,40 @@ class Wasp(Agent):
                     self.feed(agents[id])
         
 
-    def step(self,agents,forage=None) -> None:
-        
-        
+    def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> None:
         """
         Advance the wasp's state by one time step.
 
-        If the wasp is a forager and has food, it will feed nearby wasp feeders and larvae.
-        If the wasp is a feeder and has food, it will feed nearby larvae.
-        If the wasp is a forager, it will also search for food in the nearby area.
-
         Args:
-            agents (List[Agent]): List of all agents in the simulation.
-            forage (List[tuple[float, float]], optional): List of foraging points in the simulation. Defaults to None.
+            t (int, optional): Current simulation time (not used directly).
+            agents (List[Agent], optional): List of all agents in the simulation.
+            forage (List[tuple[float, float]], optional): List of foraging points in the simulation.
 
         Returns:
             None
         """
+        # Default to empty list if agents not provided
+        if agents is None:
+            agents = []
+
+        # Split agents into groups
         wasps = [agent for agent in agents if agent.type == AgentType.WASP]
-        wasps_feeders =[wasp for wasp in wasps if wasp.role == WaspRole.FEEDER]
+        wasps_feeders = [wasp for wasp in wasps if wasp.role == WaspRole.FEEDER]
         larvaes = [agent for agent in agents if agent.type == AgentType.LARVAE]
         net_receivers = wasps_feeders + larvaes
+
+        # Feeding logic
         if self.food > 0:
             if self.role == WaspRole.FORAGER:
-                self.feedNearby(net_receivers)        
+                self.feedNearby(net_receivers)
             elif self.role == WaspRole.FEEDER:
                 self.feedNearby(larvaes)
-        if self.role == WaspRole.FORAGER:
-                self.forage(forage)
+
+        # Foraging logic
+        if self.role == WaspRole.FORAGER and forage is not None:
+            self.forage(forage)
+
+        # Movement
         self.move()
 
 # ---------------------------
@@ -344,3 +353,11 @@ class Larvae(Agent):
             str: Event description.
         """
         return f"Larvae {self.id} event"
+    
+    def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> None:
+        """
+        Advance the larvae's state by one time step.
+        Larvae cannot move or forage; they only increase hunger and request food.
+        """
+        self.hunger += self.hungerRate
+        self.storedEvents.append(f"{self.id} asked for food at time {t}")
