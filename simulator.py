@@ -40,7 +40,7 @@ class Simulator:
         Calls step(t) on each agent.
         """
         for agent in self.agents:
-            agent.step(self.currentTime)
+            agent.step(t=self.currentTime, agents=self.agents, forage=self.forage)  # <-- fixed
         self.currentTime += 1
 
     def addAgent(self, agent: Agent) -> None:
@@ -274,12 +274,12 @@ class Simulator:
                     if agent.role == WaspRole.FORAGER:
                         agent.feelGradient(self.grid,self.gradients,self.forage)
                         # Move the wasp agent based on the gradient
-                        agent.step(self.agents,self.forage)
+                        agent.step(t=self.currentTime, agents=self.agents, forage=self.forage)  # <-- fixed
                     # If the wasp agent is a FEEDER, feel the gradient of the larvae and wasp agents
                     elif agent.role == WaspRole.FEEDER:
                         agent.feelGradient(self.grid,self.gradients,foragersPositions=position_foragers)
                         # Move the wasp agent based on the gradient
-                        agent.step(self.agents)
+                        agent.step(t=self.currentTime, agents=self.agents, forage=self.forage)  # <-- fixed
 
                     # Get the current position of the wasp agent
                     current_pos = agent.getPosition()

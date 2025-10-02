@@ -1,0 +1,10 @@
+# Core dependencies for agent-simulator project
+
+# Numerical computing
+numpy>=1.26.0
+
+# Plotting and visualization
+matplotlib>=3.8.0
+
+# (Optional) Data handling – useful if you want to save simulation logs or analyze results
+pandas>=2.1.0
