@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict
 from enum import Enum
-from utils import gaussian_attraction,estimate_gradient
+# from utils import gaussian_attraction,estimate_gradient
 import numpy as np
 import random
 import matplotlib.pyplot as plt
@@ -342,9 +342,10 @@ class Larvae(Agent):
     Represents a larvae agent.
     Larvae do not move or forage; they only request food.
     """
-    def __init__(self, agent_id: str, x: int, y: int, hunger: int = 0, food: int = 0):
+    def __init__(self, agent_id: str, x: int, y: int, hunger: int = 0, food: int = 0, hungerMultiplier: float = 1.0):
         super().__init__(agent_id, x, y, AgentType.LARVAE, hunger, food)
-
+        self.hungerMultiplier = hungerMultiplier
+        self.hungerRate = self.hungerMultiplier * self.hungerRate
     # Implement abstract methods
     def generateEvent(self) -> str:
         """

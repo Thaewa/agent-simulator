@@ -5,7 +5,7 @@ from typing import List, Dict
 from agents import Agent, Wasp, Larvae
 from agents import AgentType, WaspRole
 import numpy as np
-from utils import gaussian_attraction
+# from utils import gaussian_attraction
 
 class Simulator:
     """
