@@ -122,9 +122,9 @@ class Wasp(Agent):
         feelGradient(grid: np.ndarray, gradientField: Dict[WaspRole, np.ndarray]): Sense gradient field (e.g., pheromone trail or resource gradient).
     """
 
-    def __init__(self, agent_id: str, x: int, y: int, role: WaspRole, hunger: int = 0, food: int = 0):
+    def __init__(self, agent_id: str, x: int, y: int, path_finding: str="greedy", hunger: int = 0, food: int = 0):
         super().__init__(agent_id, x, y, AgentType.WASP, hunger, food)
-        self.role: WaspRole = role
+        self.path_finding: str = path_finding
         self.smellRadius: int = 10
         self.smellIntensity: float = 5.0
         self.next_step = {'x': 0, 'y': 0}

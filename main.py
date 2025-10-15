@@ -10,7 +10,9 @@ from utils import instanceGenerator
 
 def main():
     generator = instanceGenerator(total_number_of_wasps=5)
-    generator.generateSimulationInstance()
+    simulator = generator.generateSimulationInstance()
+    for agent in simulator.agents:
+        print(agent.id)
     # # Create the simulator (controller of the whole simulation process)
     # sim = Simulator()
     # # Add forage 

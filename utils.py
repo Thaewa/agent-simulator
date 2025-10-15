@@ -46,10 +46,10 @@ def estimate_gradient(points, z, edge_order=2):
 
 
 class instanceGenerator():
-    def __init__(self,total_number_of_wasps,total_number_of_larvae:int=0,percentage_foragers:float =0.1,min_number_of_cells:int = 30, max_number_of_cells:int = 100, \
-                 nest_fill_percentage:float = 0.5, forage_fill_percentage:float = 0.1, larvae_hunger_multiplier:float = 2.0, mean_food_capacity:float = 10.0, std_food_capacity:float = 2.0, hunger_rate_L1:float = 0.1, hunger_rate_L3:float = 0.4, forage_distance:int = 5):
+    def __init__(self,larvae_to_wasps_ratio:float=0.3,total_number_of_larvae:int=0,percentage_foragers:float =0.1,min_number_of_cells:int = 30, max_number_of_cells:int = 100, \
+                 nest_fill_percentage:float = 0.5, forage_fill_percentage:float = 0.1, larvae_hunger_multiplier:float = 2.0, mean_food_capacity:float = 10.0, std_food_capacity:float = 2.0, forage_distance:int = 5):
         
-        self.total_number_of_wasps = total_number_of_wasps
+        self.larvae_to_wasps_ratio = larvae_to_wasps_ratio
         self.total_number_of_larvae = total_number_of_larvae
         self.percentage_foragers = percentage_foragers
         self.min_number_of_cells = min_number_of_cells
@@ -57,8 +57,6 @@ class instanceGenerator():
         self.nest_fill_percentage = nest_fill_percentage
         self.mean_food_capacity = mean_food_capacity
         self.std_food_capacity = std_food_capacity
-        self.hunger_rate_L1 = hunger_rate_L1
-        self.hunger_rate_L3 = hunger_rate_L3
         self.forage_distance = forage_distance
         self.forage_fill_percentage = forage_fill_percentage
         self.larvae_hunger_multiplier = larvae_hunger_multiplier
@@ -66,7 +64,7 @@ class instanceGenerator():
     def generateWasps(self):
         wasps = []
         return wasps
-    def generateLarvae(self,x,y,hunger_multiplier):
+    def generateLarvae(self,x,y,hunger_multiplier=1.0):
         random_food = np.random.choice([0.9,3,5],1)
         random_hunger = 1 if random_food == 0.9 else 2
         agent_id = "L"+str(x)+str(y) 
@@ -75,31 +73,52 @@ class instanceGenerator():
     def generateGrid(self,radius):
         grid_x, grid_y = np.mgrid[-radius:radius+1, -radius:radius+1]
         grid = np.concatenate((grid_x.reshape(-1,1), grid_y.reshape(-1,1)), axis=1)
-        return grid_x,grid_y,grid
+        return grid
+    def addForaging(self, chosen_forage_indices, grid, simulator):
+        for row in grid[chosen_forage_indices,:]:
+            simulator.addForage(row[0],row[1])
+        return simulator
+    def addLarvaes(self, chosen_nest_indices, chosen_inner_nest_indices,grid, simulator):
+        for row in grid[chosen_inner_nest_indices,:]:
+            simulator.addAgent(self.generateLarvae(row[0],row[1],self.larvae_hunger_multiplier))
+        for row in grid[chosen_nest_indices,:]:
+            simulator.addAgent(self.generateLarvae(row[0],row[1]))
+        return simulator
+    def addWasps(self, chosen_nest_indices, chosen_inner_nest_indices, grid, simulator,path_finding):
+        for _ in range(self.total_number_of_wasps): 
+            if np.random.rand()<0.5:
+                index = np.random.choice(chosen_nest_indices, 1, replace=False)
+                simulator.addAgent(self.generateWasp(grid[index,0][0],grid[index,1][0],path_finding))
+            else:
+                index = np.random.choice(chosen_inner_nest_indices, 1, replace=False)
+                simulator.addAgent(self.generateWasp(grid[index,0][0],grid[index,1][0],path_finding))
+        return simulator
+    def generateWasp(self,x,y,path_finding):
+        wasp = Wasp(agent_id="W"+str(x)+str(y), x=x, y=y, food=1,hunger= 1,path_finding=path_finding)
+        return wasp
     def generateSimulator(self,path_finding):
         simulator = Simulator()
         number_of_cells = np.random.randint(self.min_number_of_cells, self.max_number_of_cells+1)
         radius_nest = int(number_of_cells**(1/2))+1
         radius_inner_nest = int(radius_nest/2)
         radius_forage = radius_nest+self.forage_distance
-        grid_x,grid_y,grid = self.generateGrid(radius_forage)
+        grid = self.generateGrid(radius_forage)
 
         inner_nest_indices = np.where(grid[:,0]**2+grid[:,1]**2<radius_inner_nest**2)[0]
         inner_chosen_nest_indices = np.random.choice(inner_nest_indices, int(self.nest_fill_percentage/2*inner_nest_indices.shape[0]), replace=False)
+
         nest_indices = np.where((grid[:,0]**2+grid[:,1]**2<radius_nest**2) & (grid[:,0]**2+grid[:,1]**2>radius_inner_nest**2))[0]
         chosen_nest_indices = np.random.choice(nest_indices, int(self.nest_fill_percentage*nest_indices.shape[0]), replace=False)
-        forage_indices = np.where(grid[:,0]**2+grid[:,1]**2<radius_forage**2 & (grid[:,0]**2+grid[:,1]**2>radius_nest**2))[0]
-        chosen_forage_indices = np.random.choice(forage_indices, int(self.forage_fill_percentage*forage_indices.shape[0]), replace=False)
 
-        for row in grid[chosen_forage_indices,:]:
-            simulator.addForage(row[0],row[1])
-        for row in grid[inner_chosen_nest_indices,:]:
-            simulator.addLarvae(self.generateLarvae(row[0],row[1],1.0))
-        for row in grid[chosen_nest_indices,:]:
-            simulator.addLarvae(self.generateLarvae(row[0],row[1],self.larvae_hunger_multiplier))
+        forage_indices = np.where((grid[:,0]**2+grid[:,1]**2<radius_forage**2) & (grid[:,0]**2+grid[:,1]**2>radius_nest**2))[0]
+        chosen_forage_indices = np.random.choice(forage_indices, int(self.forage_fill_percentage*forage_indices.shape[0]), replace=False)
+        
+        simulator = self.addForaging(chosen_forage_indices, grid, simulator)
+        simulator = self.addLarvaes(chosen_nest_indices, inner_chosen_nest_indices,grid, simulator)
+        simulator = self.addWasps(chosen_nest_indices, inner_chosen_nest_indices, grid, simulator, path_finding)
+        
         return simulator
     
     def generateSimulationInstance(self,path_finding:str="greedy"):
         simulator = self.generateSimulator(path_finding)
-        # wasps = self.generateWasps()
-        # larvaes = self.generateLarvae()
+        return simulator
