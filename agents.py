@@ -192,7 +192,10 @@ class Wasp(Agent):
                     self.storedEvents.append(f"{self.id} is in location {self.getPosition()} and foraged food at location {forage[id]}")
     def inOuterNest(self):
         return ((self.x+self.next_step['x'])**2 + (self.y+self.next_step['y'])**2) < self.outerNestRadius**2
-
+    def hungerCuesLow(self):
+        return (self.hungerCue<((self.maxHungerCue+self.minHungerCue)/4)) and ((self.maxHungerCue-self.minHungerCue)>3)
+    def foragerMovesCondition(self):    
+        return (not self.inOuterNest()) or (not self.hungerCuesLow())
     def move(self, next_step_array: np.ndarray) -> None:
         
         """
@@ -202,17 +205,26 @@ class Wasp(Agent):
         The agent will also generate an event string indicating that it moved to a new location.
 
         """
+        
         if next_step_array.shape[0] != 0:
             next_step_array = np.where(next_step_array!=np.array([self.x+self.next_step['x'],self.y+self.next_step['y']]).T, next_step_array, np.array([np.inf,np.inf]).T)
             while np.any(np.sum(np.abs(next_step_array - np.array([self.x+self.next_step['x'],self.y+self.next_step['y']]).T),axis=1) < 1.0)\
                 or (not self.inOuterNest() and self.role == WaspRole.FEEDER):
                 self.next_step['x'] = np.random.choice([-1.0, 1.0],1)[0]
                 self.next_step['y'] = np.random.choice([-1.0, 1.0],1)[0]
-        self.x += self.next_step['x']
-        self.y += self.next_step['y']
-        new_pos = self.getPosition()
+        
+        if self.role == WaspRole.FEEDER and (not self.hungerCuesLow()):
+            self.x += self.next_step['x']
+            self.y += self.next_step['y']
+            new_pos = self.getPosition()
+            self.storedEvents.append(f"{self.id} moved to {new_pos} current hunger level is {format(self.hunger, '.2f')} and food stored is {format(self.food, '.2f')}")
+        if self.role == WaspRole.FORAGER and self.foragerMovesCondition():
+            self.x += self.next_step['x']
+            self.y += self.next_step['y']
+            new_pos = self.getPosition()
+            self.storedEvents.append(f"{self.id} moved to {new_pos} current hunger level is {format(self.hunger, '.2f')} and food stored is {format(self.food, '.2f')}")
         self.next_step = {'x': 0, 'y': 0}
-        self.storedEvents.append(f"{self.id} moved to {new_pos} current hunger level is {format(self.hunger, '.2f')} and food stored is {format(self.food, '.2f')}")
+        
     def hungerCuesHigh(self):
         return ((self.hungerCue>((self.maxHungerCue+self.minHungerCue)/2)) and ((self.maxHungerCue-self.minHungerCue)>3))
     def updateHungerCue(self,hungerCue):
@@ -323,7 +335,7 @@ class Wasp(Agent):
                     self.feed(agents[id])
                     
 
-    def step(self, t: int = None, agents: List[Agent] = None, forage=None,hungerCue=None) -> None:
+    def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> None:
         """
         Advance the wasp's state by one time step.
 

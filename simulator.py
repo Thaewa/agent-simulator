@@ -7,10 +7,9 @@ from agents import AgentType, WaspRole
 import numpy as np
 from utils import gaussian_attraction
 
-
 class instanceGenerator():
     def __init__(self,larvae_to_wasps_ratio:float=0.3,total_number_of_larvae:int=0,percentage_foragers:float =0.1,min_number_of_cells:int = 30, max_number_of_cells:int = 100, \
-                 nest_fill_percentage:float = 0.5, forage_fill_percentage:float = 0.1, larvae_hunger_multiplier:float = 2.0, mean_food_capacity:float = 20.0, std_food_capacity:float = 2.0, forage_distance:int = 5,):
+                 nest_fill_percentage:float = 0.5, forage_fill_percentage:float = 0.1, larvae_hunger_multiplier:float = 2.0, mean_food_capacity:float = 10.0, std_food_capacity:float = 2.0, forage_distance:int = 5,):
         
         self.larvae_to_wasps_ratio = larvae_to_wasps_ratio
         self.total_number_of_larvae = total_number_of_larvae
@@ -331,7 +330,7 @@ class Simulator:
         """
         if not self.verifySimulationConditions():
             raise ValueError("Simulation conditions not met")
-
+        hungerCue = []
         i = 0
         while i < t:
             # Accumulate gradients (placeholder)
@@ -363,7 +362,7 @@ class Simulator:
                         # Move the wasp agent based on the gradient
                         agent.step(t=self.currentTime, agents=self.agents, forage=self.forage)  # <-- fixed
                 j += 1
-            print(agent.hungerCue)
+            hungerCue.append(agent.hungerCue)
             j = 0
             wasp_agents = [agent for agent in self.agents if isinstance(agent, Wasp)]
             while j < len(self.agents):
@@ -393,9 +392,10 @@ class Simulator:
             self.currentTime += 1
             i += 1
             self.clearGradients()
-            print('simulation step',i)
-            input('one step')
-            
+            print("step",i)
+        import matplotlib.pyplot as plt
+        plt.plot(hungerCue)
+        plt.show()
         # Build report dictionary
         report: Dict = {}
         report["movements"] = self.aggregateMovements()
