@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict
 from enum import Enum
-# from utils import gaussian_attraction,estimate_gradient
+from utils import gaussian_attraction,estimate_gradient
 import numpy as np
 import random
 import matplotlib.pyplot as plt
@@ -56,8 +56,7 @@ class Agent(ABC):
         self.storedEvents: List[str] = []
         self.radius: int = radius
         self.food: int = food
-        self.hungerRate: float = 0.2
-        
+        self.hungerRate: float = 0.05
         
 
     def getPosition(self) -> List[int]:
@@ -122,19 +121,31 @@ class Wasp(Agent):
         feelGradient(grid: np.ndarray, gradientField: Dict[WaspRole, np.ndarray]): Sense gradient field (e.g., pheromone trail or resource gradient).
     """
 
-    def __init__(self, agent_id: str, x: int, y: int, path_finding: str="greedy", hunger: int = 0, food: int = 0):
-        super().__init__(agent_id, x, y, AgentType.WASP, hunger, food)
+    def __init__(self, agent_id: str, x: int, y: int, path_finding: str="greedy", hunger: int = 0, food: int = 0, max_food: int = 10, outer_nest_radius: int = 10):
+        super().__init__(agent_id, x, y, AgentType.WASP, hunger, food, outer_nest_radius)
         self.path_finding: str = path_finding
         self.smellRadius: int = 10
         self.smellIntensity: float = 5.0
         self.next_step = {'x': 0, 'y': 0}
         self.chanceOfFeeding: float = 0.3
         self.forageIncrease: int = 10
-        self.maxFood: int = 20
+        self.maxFood: int = max_food
         self.chanceOfForaging: float = 0.3
         self.foodTransferToWasp: int = 5
         self.foodTransferToLarvae: int = 1
+        self.minHungerCue = None
+        self.maxHungerCue = None 
+        self.outerNestRadius = outer_nest_radius
 
+    #Assuming that agents can memorize how much is too much and how little is too little
+    def updateHungerCueRange(self):
+        updates = self.hungerCue
+        if self.minHungerCue == None:
+            self.minHungerCue = updates
+        if self.maxHungerCue == None:
+            self.maxHungerCue = updates
+        self.minHungerCue = updates if self.minHungerCue>updates else self.minHungerCue
+        self.maxHungerCue = updates if self.maxHungerCue<updates else self.maxHungerCue
     # Extra methods
     def feed(self, target:Agent) -> None:
         """
@@ -179,8 +190,10 @@ class Wasp(Agent):
                     self.food += self.forageIncrease
                     self.hunger = 1
                     self.storedEvents.append(f"{self.id} is in location {self.getPosition()} and foraged food at location {forage[id]}")
+    def inOuterNest(self):
+        return ((self.x+self.next_step['x'])**2 + (self.y+self.next_step['y'])**2) < self.outerNestRadius**2
 
-    def move(self) -> None:
+    def move(self, next_step_array: np.ndarray) -> None:
         
         """
         Move the agent by one step in the direction specified by the next_step attribute.
@@ -189,12 +202,21 @@ class Wasp(Agent):
         The agent will also generate an event string indicating that it moved to a new location.
 
         """
+        if next_step_array.shape[0] != 0:
+            next_step_array = np.where(next_step_array!=np.array([self.x+self.next_step['x'],self.y+self.next_step['y']]).T, next_step_array, np.array([np.inf,np.inf]).T)
+            while np.any(np.sum(np.abs(next_step_array - np.array([self.x+self.next_step['x'],self.y+self.next_step['y']]).T),axis=1) < 1.0)\
+                or (not self.inOuterNest() and self.role == WaspRole.FEEDER):
+                self.next_step['x'] = np.random.choice([-1.0, 1.0],1)[0]
+                self.next_step['y'] = np.random.choice([-1.0, 1.0],1)[0]
         self.x += self.next_step['x']
         self.y += self.next_step['y']
         new_pos = self.getPosition()
         self.next_step = {'x': 0, 'y': 0}
         self.storedEvents.append(f"{self.id} moved to {new_pos} current hunger level is {format(self.hunger, '.2f')} and food stored is {format(self.food, '.2f')}")
-
+    def hungerCuesHigh(self):
+        return ((self.hungerCue>((self.maxHungerCue+self.minHungerCue)/2)) and ((self.maxHungerCue-self.minHungerCue)>3))
+    def updateHungerCue(self,hungerCue):
+        self.hungerCue=hungerCue
     def feelGradient(self, grid: np.ndarray, gradientField: Dict[WaspRole, np.ndarray], forage: List[tuple[float, float]]=None,\
                       foragersPositions:List[np.ndarray]=None) -> None:
         
@@ -216,7 +238,9 @@ class Wasp(Agent):
         Returns:
             None
         """
-
+        hungerCue = sum(gradientField[self.role])/gradientField[self.role].shape[0]
+        self.updateHungerCue(hungerCue)
+        self.updateHungerCueRange()
         # Initialize the felt gradient to zero if the wasp does not have enough food
         feltGradient = np.zeros_like(gradientField[self.role]) if self.food<(self.hungerRate*10) else gradientField[self.role].copy()
         
@@ -229,22 +253,23 @@ class Wasp(Agent):
                 gradient = gaussian_attraction(grid[:,0],grid[:,1],x0,y0,spread,peak)
                 feltGradient = feltGradient + gradient
         
-        # If the wasp is a feeder and does not have enough food, add the pheromone trail of the forager wasps to the gradient field
-        if self.role == WaspRole.FEEDER and self.food<(self.hungerRate*10):
-            for forager_position in foragersPositions:
-                x0,y0 = forager_position
-                spread = self.smellRadius
-                peak = (self.hunger/max(self.food,0.1))/self.smellIntensity
-                gradient = gaussian_attraction(grid[:,0],grid[:,1],x0,y0,spread,peak)
-                feltGradient = feltGradient + gradient
-            
+        # If the wasp is a feeder and does not have enough food, add the pheromone trail of the forager wasps to the gradient field or 
+        # add the pheromone trail of the forager wasp to the gradient field if the hunger cues are higher
+        if self.role == WaspRole.FEEDER:
+            if self.food<(self.hungerRate*10) or self.hungerCuesHigh():
+                for forager_position in foragersPositions:
+                    x0,y0 = forager_position
+                    spread = self.smellRadius
+                    peak = (self.hunger/max(self.food,0.1))/self.smellIntensity
+                    gradient = gaussian_attraction(grid[:,0],grid[:,1],x0,y0,spread,peak)
+                    feltGradient = feltGradient + gradient
+
         # Estimate the gradient of the modified gradient field
         dZdx, dZdy = estimate_gradient(grid, feltGradient)
         dZ = np.column_stack((dZdx, dZdy))
         mask = np.all(grid == np.array([self.x,self.y]).ravel(), axis=1)
         idx = np.flatnonzero(mask)
         sign_displacement = np.sign(dZ[idx])
-        
         # Update the next step of the wasp based on the sign of the displacement
         self.next_step[list(self.next_step.keys())[0]] += sign_displacement[0,0].item()
         self.next_step[list(self.next_step.keys())[1]] += sign_displacement[0,1].item()
@@ -296,9 +321,9 @@ class Wasp(Agent):
             for id in idx:
                 if random.random()>self.chanceOfFeeding:
                     self.feed(agents[id])
-        
+                    
 
-    def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> None:
+    def step(self, t: int = None, agents: List[Agent] = None, forage=None,hungerCue=None) -> None:
         """
         Advance the wasp's state by one time step.
 
@@ -310,10 +335,7 @@ class Wasp(Agent):
         Returns:
             None
         """
-        # Default to empty list if agents not provided
-        if agents is None:
-            agents = []
-
+        
         # Split agents into groups
         wasps = [agent for agent in agents if agent.type == AgentType.WASP]
         wasps_feeders = [wasp for wasp in wasps if wasp.role == WaspRole.FEEDER]
@@ -322,17 +344,17 @@ class Wasp(Agent):
 
         # Feeding logic
         if self.food > 0:
-            if self.role == WaspRole.FORAGER:
-                self.feedNearby(net_receivers)
+            if self.role == WaspRole.FORAGER :
+                if self.hungerCuesHigh():
+                    self.feedNearby(wasps_feeders)
+                else: 
+                    self.feedNearby(net_receivers)
             elif self.role == WaspRole.FEEDER:
                 self.feedNearby(larvaes)
-
+                
         # Foraging logic
         if self.role == WaspRole.FORAGER and forage is not None:
             self.forage(forage)
-
-        # Movement
-        self.move()
 
 # ---------------------------
 # Subclass: Larvae
