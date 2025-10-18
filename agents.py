@@ -4,10 +4,11 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict
 from enum import Enum
-from utils import gaussian_attraction,estimate_gradient
+from utils import gaussian_attraction,estimate_gradient,m_closest_rows,grid_graph_from_array
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+import networkx as nx
 # ---------------------------
 # Enums
 # ---------------------------
@@ -124,14 +125,14 @@ class Wasp(Agent):
     def __init__(self, agent_id: str, x: int, y: int, path_finding: str="greedy", hunger: int = 0, food: int = 0, max_food: int = 10, outer_nest_radius: int = 10,hunger_rate: float = 0.01):
         super().__init__(agent_id, x, y, AgentType.WASP, hunger, food, outer_nest_radius)
         self.path_finding: str = path_finding
-        self.smellRadius: int = 3
+        self.smellRadius: int = 2
         self.smellIntensity: float = 5.0
         self.next_step = {'x': 0, 'y': 0}
         self.chanceOfFeeding: float = 0.0
         self.forageIncrease: int = 10
         self.maxFood: int = max_food
         self.chanceOfForaging: float = 0.3
-        self.foodTransferToWasp: int = 3
+        self.foodTransferToWasp: int = 1
         self.foodTransferToLarvae: int = 1
         self.minHungerCue = None
         self.maxHungerCue = None 
@@ -140,6 +141,8 @@ class Wasp(Agent):
         self.repulsionRadius = 1
         self.rolePersistence = 50
         self.hungerCueDecay = 0.9
+        self.prevStep = None if path_finding != 'random_walk' else self.getPosition()
+        self.path = None 
     def updateRolePersistence(self):
         self.rolePersistence += 50
     #Assuming that agents can memorize how much is too much and how little is too little
@@ -152,6 +155,20 @@ class Wasp(Agent):
         self.minHungerCue = updates if self.minHungerCue>updates else self.minHungerCue
         self.maxHungerCue = updates if self.maxHungerCue<updates else self.maxHungerCue
     # Extra methods
+    def feedWasp(self,wasp:Agent, passed_food:int):
+        if wasp.hungerCue > 0.0:
+            self.hungerCue = (self.hungerCue+wasp.hungerCue)/2
+            self.food -= passed_food
+            wasp.food += passed_food
+            wasp.hunger = 1
+            print(f"{self.id} fed {wasp.id} (transfer)")
+            self.storedEvents.append(f"{self.id} fed {wasp.id} (transfer)")
+    def feedLarvae(self, larvae:Agent, passed_food:int):
+        self.food -= passed_food
+        larvae.food += passed_food
+        larvae.hunger = 1
+        print(f"{self.id} fed {larvae.id}")
+        self.storedEvents.append(f"{self.id} fed {larvae.id}")
     def feed(self, target:Agent) -> None:
         """
         Feed an agent by giving it one unit of food (if available).
@@ -162,15 +179,17 @@ class Wasp(Agent):
         """
         passed_food = self.foodTransferToLarvae if target.type == AgentType.LARVAE else self.foodTransferToWasp
         if self.food > passed_food:
-            self.food -= passed_food
-            target.food += passed_food
-            target.hunger = 1
-            if isinstance(target, Larvae):
-                self.storedEvents.append(f"{self.id} fed {target.id}")
-            elif isinstance(target, Wasp) and target.role == WaspRole.FEEDER:
-                if target.hungerCue > 0.0:
-                    self.hungerCue = (self.hungerCue+target.hungerCue)/2
-                self.storedEvents.append(f"{self.id} fed {target.id} (transfer)")
+            if self.hungerCuesHigh() and self.role == WaspRole.FORAGER:
+                if isinstance(target, Larvae):
+                    if np.random.rand() < 0.8:
+                        self.feedLarvae(target, passed_food)
+                else:
+                    self.feedWasp(target, passed_food)
+            else:
+                if isinstance(target, Larvae):
+                    self.feedLarvae(target, passed_food)
+                else:
+                    self.feedWasp(target, passed_food)
         else:
             self.storedEvents.append(f"{self.id} tried to feed {target.id} but had no food")
 
@@ -206,6 +225,7 @@ class Wasp(Agent):
         mask = np.all(grid == np.array([self.x+self.next_step['x'],self.y+self.next_step['y']]).T, axis=1)
         idx = np.flatnonzero(mask)
         return len(idx)>1
+    
     def move(self, next_step_array: np.ndarray, grid: np.ndarray) -> None:
         
         """
@@ -228,7 +248,8 @@ class Wasp(Agent):
                     self.next_step['x'] = 0.0
                     self.next_step['y'] = 0.0
                     break
-        # if (not self.hungerCuesLow()):
+        if self.path_finding == "random_walk":
+            self.prevStep = self.getPosition()
         self.x += self.next_step['x']
         self.y += self.next_step['y']
         new_pos = self.getPosition()
@@ -272,8 +293,91 @@ class Wasp(Agent):
             feltGradient = feltGradient - gradient 
         return feltGradient
 
+    def greedy_path_finding(self, grid: np.ndarray, gradientField: Dict[WaspRole, np.ndarray], forage: List[tuple[float, float]]=None,\
+                      foragersPositions:np.ndarray=None, waspPositions:np.ndarray=None)-> None:
+        # If the wasp is a forager and does not have enough food, add the pheromone trail of the foraging points to the gradient field
+        if self.role == WaspRole.FORAGER:
+            if self.food<1:
+                feltGradient = self.feelForageGradient(gradientField,forage,grid)
+            else:
+                feltGradient = gradientField[self.role]
+
+        # If the wasp is a feeder and does not have enough food, add the pheromone trail of the forager wasps to the gradient field or 
+        # add the pheromone trail of the forager wasp to the gradient field if the hunger cues are higher
+        if self.role == WaspRole.FEEDER:
+            if self.food<1:
+                feltGradient = self.feelForagersGradient(gradientField,foragersPositions, grid)
+            else:
+                feltGradient = gradientField[self.role]
+                feltGradient = self.addRepulsionGradient(feltGradient, waspPositions, grid)
+        # Estimate the gradient of the modified gradient field
+        dZdx, dZdy = estimate_gradient(grid, feltGradient)
+        dZ = np.column_stack((dZdx, dZdy))
+        mask = np.all(grid == np.array([self.x,self.y]).T, axis=1)
+        idx = np.flatnonzero(mask)
+        sign_displacement = np.sign(dZ[idx])
+        # Update the next step of the wasp based on the sign of the displacement
+        self.next_step[list(self.next_step.keys())[0]] += sign_displacement[0,0].item()
+        self.next_step[list(self.next_step.keys())[1]] += sign_displacement[0,1].item()
+
+    def random_walk_path_finding(self):
+        new_x = np.random.choice([-1.0, 0.0, 1.0],1)[0]
+        new_y = np.random.choice([-1.0, 0.0, 1.0],1)[0]
+        if "biased" in self.path_finding:
+            while self.prevStep[0]==(self.x+new_x) and self.prevStep[1]==(self.y+new_y):
+                new_x = np.random.choice([-1.0, 0.0, 1.0],1)[0]
+                new_y = np.random.choice([-1.0, 0.0, 1.0],1)[0]
+
+    def estimate_path(self,x,y,relevant_larvae_position,X,Y):
+        arr_full = np.ones_like(X,dtype=bool)
+        G = grid_graph_from_array(arr_full,X,Y)
+        int_position = [int(pos) for pos in self.getPosition()]
+        nodes = np.array(relevant_larvae_position)
+        nodes = (nodes.astype(int)).tolist()
+        nodes_list = [tuple(node) for node in nodes]
+        tsp = nx.approximation.traveling_salesman_problem(G, nodes = nodes_list, cycle=True if "Hamiltonian" in self.path_finding else False)
+        int_position = [int(pos) for pos in self.getPosition()]
+        print(G.nodes())
+        print(tuple(int_position))
+        added_path = nx.shortest_path(G,tuple(int_position),tsp[0])
+        return added_path+tsp
+    def shortest_path_finding(self,larvaePositions):
+        if self.path == None:
+            index = np.where(((larvaePositions[:,0]-self.x)**2+(larvaePositions[:,1]-self.y)**2<=(self.smellRadius+2)**2) & (((larvaePositions[:,0]-self.x)**2+(larvaePositions[:,1]-self.y)**2)!=0))[0]    
+            if len(index) == 0:
+                pass
+            else:
+                min_x = larvaePositions[index][:,0].min()
+                max_x = larvaePositions[index][:,0].max()
+                min_y = larvaePositions[index][:,1].min()
+                max_y = larvaePositions[index][:,1].max()
+                x = np.arange(min(min_x-2,self.x-2),max(max_x+2,self.x+2))
+                y = np.arange(min(min_y-2,self.y-2),max(max_y+2,self.y+2))
+                X, Y = np.meshgrid(x, y)
+                m = int(self.food/self.foodTransferToLarvae)
+                _,relevant_larvae_position = m_closest_rows(larvaePositions[index],np.array(self.getPosition()),min(len(index),m))
+                if relevant_larvae_position.shape[0] == 1:
+                    pass
+                else:
+                    self.path = self.estimate_path(x,y,relevant_larvae_position,X,Y)
+                    print(self.path)
+                    self.next_step['x'] = self.path[0][0]-self.x 
+                    self.next_step['y'] = self.path[0][1]-self.y
+                    self.path = self.path[1:]
+        else:
+            if abs(self.path[0][0]-self.x) >1 or abs(self.path[0][1]-self.y)>1:
+                self.path = None
+            else:
+                self.next_step['x'] = self.path[0][0]-self.x
+                self.next_step['y'] = self.path[0][1]-self.y
+                if len(self.path)==1:
+                    self.path = None
+                else:
+                    print(self.path[0],self.x,self.y)
+                    self.path = self.path[1:]
+                
     def feelGradient(self, grid: np.ndarray, gradientField: Dict[WaspRole, np.ndarray], forage: List[tuple[float, float]]=None,\
-                      foragersPositions:np.ndarray=None, waspPositions:np.ndarray=None) -> None:
+                      foragersPositions:np.ndarray=None, waspPositions:np.ndarray=None, larvaePositions:np.ndarray=None) -> None:
         
         """
         Feel the gradient of the environment.
@@ -296,37 +400,23 @@ class Wasp(Agent):
         hungerCue = sum(gradientField[self.role])/gradientField[self.role].shape[0]
         self.updateHungerCue(hungerCue)
         self.updateHungerCueRange()
-        # Initialize the felt gradient to zero if the wasp does not have enough food
-        
-        # If the wasp is a forager and does not have enough food, add the pheromone trail of the foraging points to the gradient field
-        if self.role == WaspRole.FORAGER:
-            if self.food<1:
-                feltGradient = self.feelForageGradient(gradientField,forage,grid)
-            else:
-                feltGradient = gradientField[self.role]
 
-        # If the wasp is a feeder and does not have enough food, add the pheromone trail of the forager wasps to the gradient field or 
-        # add the pheromone trail of the forager wasp to the gradient field if the hunger cues are higher
-        if self.role == WaspRole.FEEDER:
-            if self.food<1:
-                feltGradient = self.feelForagersGradient(gradientField,foragersPositions, grid)
-            else:
-                feltGradient = gradientField[self.role]
-                feltGradient = self.addRepulsionGradient(feltGradient, waspPositions, grid)
-        # Estimate the gradient of the modified gradient field
-        dZdx, dZdy = estimate_gradient(grid, feltGradient)
-        dZ = np.column_stack((dZdx, dZdy))
-        mask = np.all(grid == np.array([self.x,self.y]).T, axis=1)
-        idx = np.flatnonzero(mask)
-        sign_displacement = np.sign(dZ[idx])
-        if len(idx) == 0:
-            print(self.x,self.y)
-            input('hipi')
-        # Update the next step of the wasp based on the sign of the displacement
-        self.next_step[list(self.next_step.keys())[0]] += sign_displacement[0,0].item()
-        self.next_step[list(self.next_step.keys())[1]] += sign_displacement[0,1].item()
-        # Log the event of sensing the gradient
-        self.storedEvents.append(f"{self.id} sensed gradient ")
+        if self.food<1.1:
+            self.greedy_path_finding(grid, gradientField, forage,foragersPositions, waspPositions)
+        elif self.food<self.foodTransferToWasp and self.role == WaspRole.FORAGER:
+            self.greedy_path_finding(grid, gradientField, forage,foragersPositions, waspPositions)
+        else:
+            # Initialize the felt gradient to zero if the wasp does not have enough food
+            if self.path_finding == "greedy":
+                self.greedy_path_finding(grid, gradientField, forage,foragersPositions, waspPositions)
+            elif "random_walk" in self.path_finding:
+                self.random_walk_path_finding()
+            elif "TSP" in self.path_finding:
+                self.greedy_path_finding(grid, gradientField, forage,foragersPositions, waspPositions)
+                self.shortest_path_finding(larvaePositions)
+            # Log the event of sensing the gradient
+            self.storedEvents.append(f"{self.id} sensed gradient ")
+
 
    
     def generateEvent(self) -> str:

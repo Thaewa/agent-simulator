@@ -1,5 +1,5 @@
 import numpy as np
-
+import networkx as nx
 def gaussian_attraction(x,y,x0,y0,spread,peak):
     """
     Evaluates a 2D Gaussian function at positions (x,y) with
@@ -41,3 +41,96 @@ def estimate_gradient(points, z, edge_order=2):
 
     # map back to original flat ordering
     return dZdx[inv_y, inv_x], dZdy[inv_y, inv_x]
+
+def m_closest_rows(points: np.ndarray, location: np.ndarray, m: int):
+    """
+    points: (n, 2) array
+    location: (2,) or (1,2)
+    m: number of nearest rows
+
+    Returns:
+        idx_sorted: (m,) indices of nearest rows (ascending by distance)
+        pts_sorted: (m, 2) rows at those indices
+        d_sorted:   (m,) distances (included if return_distances=True)
+    """
+    points = np.asarray(points, dtype=float)
+    location = np.asarray(location, dtype=float).reshape(2,)
+    n = points.shape[0]
+    if points.shape[1] != 2:
+        raise ValueError("points must be shape (n, 2)")
+    if not (1 <= m <= n):
+        raise ValueError("m must be between 1 and n")
+
+    d = np.linalg.norm(points - location, axis=1)        # all distances
+    idx_part = np.argpartition(d, m-1)[:m]               # top-m (unordered)
+    order_local = np.argsort(d[idx_part], kind="stable") # order those m
+    idx_sorted = idx_part[order_local]
+
+    pts_sorted = points[idx_sorted]
+    return idx_sorted, pts_sorted
+
+# def grid_graph_from_array(arr,X,Y, connectivity=8):
+#     """
+#     Create a NetworkX graph from a 2D array where truthy cells are nodes.
+#     Edges connect unit-neighbors (connectivity=4) or king-move neighbors (connectivity=8).
+    
+#     Node labels are (row, col) index tuples matching NumPy indexing.
+#     """
+#     if arr.ndim != 2:
+#         raise ValueError("arr must be 2D")
+#     G = nx.Graph()
+    
+#     for row in range(X.shape[0]):
+#         for col in range(X.shape[1]):
+#             if arr[row,col]:
+#                 G.add_node((X[row,col],Y[row,col]))  
+            
+#     # Neighbor offsets
+#     nbrs_4 = [(-1,0), (1,0), (0,-1), (0,1)]
+#     nbrs_8 = nbrs_4 + [(-1,-1), (-1,1), (1,-1), (1,1)]
+#     offsets = nbrs_4 if connectivity == 4 else nbrs_8
+    
+#     nodes = list(G.nodes())
+    
+#     for node in nodes:
+#         for offset in offsets:
+#             nbr = (node[0] + offset[0], node[1] + offset[1])
+#             if nbr in nodes:
+#                 G.add_edge(node, nbr)
+#     return G
+
+
+def grid_graph_from_array(arr, X, Y, connectivity=8):
+    """
+    Nodes are labeled by their coordinate values: (X[row,col], Y[row,col]).
+    Edges connect 4- or 8-neighbors among cells where arr==True.
+    """
+    if arr.ndim != 2:
+        raise ValueError("arr must be 2D")
+    H, W = arr.shape
+    G = nx.Graph()
+    # --- nodes: keep your coordinate-based labels ---
+    for r in range(H):
+        for c in range(W):
+            G.add_node((X[r, c], Y[r, c]))
+
+    # --- neighbor offsets ---
+    nbrs_4 = [(-1,0), (1,0), (0,-1), (0,1)]
+    nbrs_8 = nbrs_4 + [(-1,-1), (-1,1), (1,-1), (1,1)]
+    offsets = nbrs_4 if connectivity == 4 else nbrs_8
+
+    # --- edges: iterate in index space, map to coordinate labels ---
+    for r in range(H):
+        for c in range(W):
+            if not arr[r, c]:
+                continue
+            u = (X[r, c], Y[r, c])
+            for dr, dc in offsets:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < H and 0 <= nc < W and arr[nr, nc]:
+                    v = (X[nr, nc], Y[nr, nc])
+                    # optional duplicate guard (undirected graph)
+                    if (nr > r) or (nr == r and nc > c):
+                        G.add_edge(u, v)
+
+    return G

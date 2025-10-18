@@ -8,9 +8,9 @@ import numpy as np
 from utils import gaussian_attraction
 
 class instanceGenerator():
-    def __init__(self,larvae_to_wasps_ratio:float=0.3,percentage_foragers:float =0.1,min_number_of_cells:int = 100, max_number_of_cells:int = 120, \
-                 nest_fill_percentage:float = 0.5, forage_fill_percentage:float = 0.1, larvae_hunger_multiplier:float = 3.0, mean_food_capacity:float = 15.0, std_food_capacity:float = 3.0, 
-                 forage_distance:int = 10,hunger_rate: float = 0.1):
+    def __init__(self,larvae_to_wasps_ratio:float=0.3,percentage_foragers:float =0.1,min_number_of_cells:int = 100, max_number_of_cells:int = 300, \
+                 nest_fill_percentage:float = 0.3, forage_fill_percentage:float = 0.1, larvae_hunger_multiplier:float = 3.0, mean_food_capacity:float = 10.0, std_food_capacity:float = 3.0, 
+                 forage_distance:int = 10,hunger_rate: float = 0.2):
         
         self.larvae_to_wasps_ratio = larvae_to_wasps_ratio
         self.percentage_foragers = percentage_foragers
@@ -69,9 +69,6 @@ class instanceGenerator():
         radius_forage = radius_nest+self.forage_distance
         grid = self.generateGrid(radius_forage+10)
         simulator.grid = grid
-        print(grid[:,0].max(),grid[:,1].max())
-        print(grid[:,0].min(),grid[:,1].min())
-        input('hipi')
         inner_nest_indices = np.where(grid[:,0]**2+grid[:,1]**2<radius_inner_nest**2)[0]
         inner_chosen_nest_indices_larvaes = np.random.choice(inner_nest_indices, int(self.nest_fill_percentage/2*inner_nest_indices.shape[0]), replace=False)
         nest_indices = np.where((grid[:,0]**2+grid[:,1]**2<radius_nest**2) & (grid[:,0]**2+grid[:,1]**2>radius_inner_nest**2))[0]
@@ -358,7 +355,6 @@ class Simulator:
                     if agent.inOuterNest():
                         local_hunger_cue = agent.estimateLocalHungerCue(self.gradients[agent.role],self.grid)
                         agent.updateHungerCue(local_hunger_cue/self.gradients[agent.role].shape[0])
-                        
                     # Get the positions of all wasp agents with the role of FORAGER
                     position_foragers = [agent_.getPosition() for agent_ in wasps if agent_.role == WaspRole.FORAGER]
 
@@ -367,12 +363,12 @@ class Simulator:
                     
                     # If the wasp agent is a FORAGER, feel the gradient of the foraging points
                     if agent.role == WaspRole.FORAGER:
-                        agent.feelGradient(self.grid,self.gradients,self.forage)
+                        agent.feelGradient(self.grid,self.gradients,self.forage,larvaePositions = np.array(larvae_position))
                         # Move the wasp agent based on the gradient
                         agent.step(t=self.currentTime, agents=self.agents, forage=self.forage)  # <-- fixed
                     # If the wasp agent is a FEEDER, feel the gradient of the larvae and wasp agents
                     elif agent.role == WaspRole.FEEDER:
-                        agent.feelGradient(self.grid,self.gradients,foragersPositions=np.array(position_foragers),waspPositions = np.array(position_wasp))
+                        agent.feelGradient(self.grid,self.gradients,foragersPositions=np.array(position_foragers),waspPositions = np.array(position_wasp), larvaePositions = np.array(larvae_position))
                         # Move the wasp agent based on the gradient
                         agent.step(t=self.currentTime, agents=self.agents, forage=self.forage)  # <-- fixed
                     else:
@@ -408,7 +404,6 @@ class Simulator:
                 else:
                     agent.food = 0
                 if  isinstance(agent, Wasp):
-                    
                     if i % 100 == 0 and count_roles <= self.max_role_changes:
                         if agent.role==WaspRole.FEEDER and agent.hungerCuesHigh() and ((total_foragers+1)/total_wasp)<(self.forager_ratio+self.potential_feeder_to_forager):
                             if np.random.random()>0.8 and agent.rolePersistence == 0 and agent.inOuterNest():
@@ -423,7 +418,7 @@ class Simulator:
                                 total_foragers-=1
                                 agent.updateRolePersistence()
                                 count_roles += 1
-
+                    
                     if agent.rolePersistence>0:
                         agent.rolePersistence-=1            
                 j += 1
@@ -450,8 +445,9 @@ class Simulator:
             #     # plt.scatter(larvae_positions[:,0],larvae_positions[:,1],c='black',marker='x')
             #     plt.show()
         total_wasp_position=np.array(total_wasp_position)
-        for i in range(total_wasp_position.shape[1]):
-            plt.plot(total_wasp_position[:,i,0],total_wasp_position[:,i,1])
+        # for i in range(total_wasp_position.shape[1]):
+            # plt.plot(total_wasp_position[:,i,0],total_wasp_position[:,i,1])
+        plt.plot(num_hunger_larvae)
         # plt.plot(num_foragers)
         # plt.plot(hunger_cues)
         plt.show()        
