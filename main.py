@@ -2,9 +2,15 @@
 # Entry point for running the agent simulation
 
 from simulator import instanceGenerator
+import yaml
+import os
 
 def main():
-    generator = instanceGenerator()
+    
+    with open(os.path.join("config", "config.yaml"), "r") as f:
+        args = yaml.safe_load(f)
+        
+    generator = instanceGenerator(**args['instance_generator'])
     simulator = generator.generateSimulationInstance("greedy")
     # # Run simulation for T steps
     T = 1000

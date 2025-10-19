@@ -120,6 +120,23 @@ def in_circle(x, y, radius):
     """
     return x**2 + y**2 <= radius**2
 
+def outside_circle(x, y, radius):
+    r"""
+    Check whether coordinates fall outisde a centered circle.
+
+    Tests :math:`x^2 + y^2 \geq \text{radius}^2` elementwise.
+
+    :param x: X-coordinates.
+    :type x: numpy.ndarray | float | int
+    :param y: Y-coordinates.
+    :type y: numpy.ndarray | float | int
+    :param radius: Circle radius.
+    :type radius: float | int
+    :return: Boolean mask (broadcast to input shape) indicating membership.
+    :rtype: numpy.ndarray | bool
+    """
+    return x**2 + y**2 >= radius**2
+
 
 def not_in_circle_center(x, y, radius):
     r"""

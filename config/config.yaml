@@ -1,0 +1,31 @@
+instance_generator:
+  larvae_to_wasps_ratio: 0.3
+  percentage_foragers:  0.1
+  min_number_of_cells: 100
+  max_number_of_cells: 120
+  nest_fill_percentage: 0.3
+  forage_fill_percentage: 0.1
+  larvae_hunger_multiplier: 3.0
+  mean_food_capacity: 10.0
+  std_food_capacity: 3.0
+  forage_distance: 10
+  hunger_rate: 0.2
+  proportion_inner_larvae: 0.5
+  grid_buffer:  1
+  forage_buffer: 10
+
+wasp:
+  food_capacity_mean: 10.0
+  food_capacity_std: 3.0
+  food_capacity_min: 1.0
+  food_capacity_max: 30.0
+  food_gain: 1.0
+  food_loss: 0.5
+  hunger_rate: 0.2
+
+larvae:
+  hunger_rate: 0.2
+
+simulator:
+  grid_buffer: 1
+  forage_buffer: 10

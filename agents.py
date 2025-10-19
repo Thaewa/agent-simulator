@@ -273,7 +273,7 @@ class Wasp(Agent):
         self.rolePersistenceUpdate = 0
         self.unloadOnlyChance = 0.8
         self.hungerCuesLowThreshold = 0.25
-        self.hungerCuesHighThreshold = 0.75
+        self.hungerCuesHighThreshold = 0.55
         self.maxStepTrials = 10
         self.oneStepList = [-1, 0, 1]
         self.smellRadiusBuffer = 2
