@@ -1,0 +1,48 @@
+instance_generator:
+  larvae_to_wasps_ratio: 0.3
+  percentage_foragers:  0.1
+  min_number_of_cells: 100
+  max_number_of_cells: 120
+  nest_fill_percentage: 0.3
+  forage_fill_percentage: 0.1
+  larvae_hunger_multiplier: 3.0
+  mean_food_capacity: 10.0
+  std_food_capacity: 3.0
+  forage_distance: 10
+  hunger_rate: 0.2
+  proportion_inner_larvae: 0.5
+  grid_buffer:  1
+  forage_buffer: 10
+
+wasp:
+  path_finding: "greedy"
+  hunger: 1
+  food: 1
+  outer_nest_radius: 10
+  hunger_rate: 0.01
+  smell_radius: 2
+  smell_intensity: 5.0
+  chance_of_feeding: 0.8
+  forage_increase: 10
+  chance_of_foraging: 0.8
+  food_transfer_to_wasp: 1
+  food_transfer_to_larvae: 1
+  smell_repulsion: 2
+  repulsion_radius: 1
+  role_persistence: 50
+  hunger_cue_decay: 0.9
+  unload_only_chance: 0.8
+  hunger_cues_low_threshold: 0.25
+  hunger_cues_high_threshold: 0.55
+  max_step_trials: 10
+  smell_radius_buffer: 2 
+  feeder_to_forager_probability: 0.8
+  forager_to_feeder_probability: 0.2
+
+larvae:
+  hunger_rate: 0.2
+  hunger_rate_multiplier: 2.0
+  
+simulator:
+  grid_buffer: 1
+  forage_buffer: 10
