@@ -11,7 +11,11 @@ def main():
         args = yaml.safe_load(f)
         
     generator = instanceGenerator(**args['instance_generator'])
-    simulator = generator.generateSimulationInstance("greedy")
+    generator.waspDictionary(args['wasp'])
+    generator.larvaeDictionary(args['larvae'])
+    generator.simulatorDictionary(args['simulator'])
+    
+    simulator = generator.generateSimulator()
     # # Run simulation for T steps
     T = 1000
     report = simulator.runSimulation(T)

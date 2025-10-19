@@ -178,6 +178,42 @@ class Wasp(Agent):
     :type outer_nest_radius: int
     :param hunger_rate: Per-step hunger increase rate.
     :type hunger_rate: float
+    :param smell_radius: Radius of olfactory perception (in grid units).
+    :type smell_radius: int
+    :param smell_intensity: Intensity scaling of olfactory perception.
+    :type smell_intensity: float
+    :param chance_of_feeding: Probability of feeding larvae when encountering one.
+    :type chance_of_feeding: float
+    :param forage_increase: Amount of food added to the foraging site when a wasp forages.
+    :type forage_increase: int
+    :param chance_of_foraging: Probability of foraging at a foraging site.
+    :type chance_of_foraging: float
+    :param food_transfer_to_wasp: Amount of food transferred from a wasp to another when the latter is hungry and encounters the former.
+    :type food_transfer_to_wasp: int
+    :param food_transfer_to_larvae: Amount of food transferred from a wasp to a larva when the wasp is not hungry and encounters the larva.
+    :type food_transfer_to_larvae: int
+    :param smell_repulsion: Amount of grid units to repel from a foraging site when a wasp encounters one.
+    :type smell_repulsion: int
+    :param repulsion_radius: Radius of repulsion from a foraging site.
+    :type repulsion_radius: int
+    :param role_persistence: Number of simulation steps before reassessing the role of a wasp.
+    :type role_persistence: int
+    :param hunger_cue_decay: Rate of decay of hunger cues from a foraging site.
+    :type hunger_cue_decay: float
+    :param unload_only_chance: Probability of a wasp unloading food at a foraging site without foraging.
+    :type unload_only_chance: float
+    :param hunger_cues_low_threshold: Lower bound on the hunger cue threshold.
+    :type hunger_cues_low_threshold: float
+    :param hunger_cues_high_threshold: Upper bound on the hunger cue threshold.
+    :type hunger_cues_high_threshold: float
+    :param max_step_trials: Maximum number of times a wasp will attempt to take a step before giving up.
+    :type max_step_trials: int
+    :param smell_radius_buffer: Additional radius added to the smell radius to prevent wasps from getting stuck at the edge of the foraging site.
+    :type smell_radius_buffer: int
+    :param feeder_to_forager_probability: Probability of a wasp becoming a forager when being a feeder and hunger cues are high.
+    :type feeder_to_forager_probability: float
+    :param forager_to_feeder_probability: Probability of a wasp becoming a feeder when being a forager and hunger cues are low.
+    :type forager_to_feeder_probability: float
 
     **Key attributes**
 
@@ -203,7 +239,7 @@ class Wasp(Agent):
     :vartype foodTransferToLarvae: int
     :ivar minHungerCue: Minimum observed hunger cue (tracking range).
     :vartype minHungerCue: float | None
-    :ivar maxHungerCue: Maximum observed hunger cue (tracking range).
+    :var maxHungerCue: Maximum observed hunger cue (tracking range).
     :vartype maxHungerCue: float | None
     :ivar outerNestRadius: Outer nest radius constraint.
     :vartype outerNestRadius: int
@@ -235,48 +271,72 @@ class Wasp(Agent):
     :vartype oneStepList: List[int]
     :ivar smellRadiusBuffer: Additional radius buffer used in shortest-path detection.
     :vartype smellRadiusBuffer: int
+    :ivar feederToForagerProbability: Probability of a wasp becoming a forager when being a feeder and hunger cues are high.
+    :vartype feederToForagerProbability: float
+    :ivar foragerToFeederProbability: Probability of a wasp becoming a feeder when being a forager and hunger cues are low.
+    :vartype foragerToFeederProbability: float
     """
 
     def __init__(
         self,
         agent_id: str,
-        x: int,
-        y: int,
+        x: int = 0,
+        y: int = 0,
         path_finding: str = "greedy",
         hunger: int = 0,
         food: int = 0,
         max_food: int = 10,
         outer_nest_radius: int = 10,
         hunger_rate: float = 0.01,
+        smell_radius: int = 2,
+        smell_intensity: float = 5.0,
+        chance_of_feeding: float = 0.8,
+        forage_increase: int = 10,
+        chance_of_foraging: float = 0.8,
+        food_transfer_to_wasp: int = 1,
+        food_transfer_to_larvae: int = 1,
+        smell_repulsion: int = 2,
+        repulsion_radius: int = 1,
+        role_persistence: int = 50,
+        hunger_cue_decay: float = 0.9,
+        unload_only_chance: float = 0.8,
+        hunger_cues_low_threshold: float = 0.25,
+        hunger_cues_high_threshold: float = 0.55,
+        max_step_trials: int = 10,
+        smell_radius_buffer: int = 2,
+        feeder_to_forager_probability: float = 0.8,
+        forager_to_feeder_probability: float = 0.2,
     ) -> None:
         super().__init__(agent_id, x, y, AgentType.WASP, hunger, food, outer_nest_radius)
         self.path_finding: str = path_finding
-        self.smellRadius: int = 2
-        self.smellIntensity: float = 5.0
+        self.smellRadius: int = smell_radius
+        self.smellIntensity: float = smell_intensity
         self.next_step = {"x": 0, "y": 0}
-        self.chanceOfFeeding: float = 0.0
-        self.forageIncrease: int = 10
+        self.chanceOfFeeding: float = chance_of_feeding
+        self.forageIncrease: int = forage_increase
         self.maxFood: int = max_food
-        self.chanceOfForaging: float = 0.3
-        self.foodTransferToWasp: int = 1
-        self.foodTransferToLarvae: int = 1
+        self.chanceOfForaging: float = chance_of_foraging
+        self.foodTransferToWasp: int = food_transfer_to_wasp
+        self.foodTransferToLarvae: int = food_transfer_to_larvae
         self.minHungerCue = None
         self.maxHungerCue = None
         self.outerNestRadius = outer_nest_radius
         self.hunger_rate = hunger_rate
-        self.smellrepulsion = 2
-        self.repulsionRadius = 1
-        self.rolePersistence = 50
-        self.hungerCueDecay = 0.9
+        self.smellrepulsion = smell_repulsion
+        self.repulsionRadius = repulsion_radius
+        self.rolePersistence = role_persistence
+        self.hungerCueDecay = hunger_cue_decay
         self.prevStep = None if path_finding != "random_walk" else self.getPosition()
         self.path = None
         self.rolePersistenceUpdate = 0
-        self.unloadOnlyChance = 0.8
-        self.hungerCuesLowThreshold = 0.25
-        self.hungerCuesHighThreshold = 0.55
-        self.maxStepTrials = 10
+        self.unloadOnlyChance = unload_only_chance
+        self.hungerCuesLowThreshold = hunger_cues_low_threshold
+        self.hungerCuesHighThreshold = hunger_cues_high_threshold
+        self.maxStepTrials = max_step_trials
         self.oneStepList = [-1, 0, 1]
-        self.smellRadiusBuffer = 2
+        self.smellRadiusBuffer = smell_radius_buffer
+        self.feeder_to_forager_probability = feeder_to_forager_probability
+        self.forager_to_feeder_probability = forager_to_feeder_probability
 
     def updateRolePersistence(self) -> None:
         """
@@ -390,7 +450,7 @@ class Wasp(Agent):
         idx = self.nearbyEntity(forage)
         if idx.shape[0] > 0:
             for id in idx:
-                if random.random() > self.chanceOfForaging and (
+                if random.random() < self.chanceOfForaging and (
                     self.food + self.forageIncrease < self.maxFood
                 ):
                     self.food += self.maxFood  # (Behavior preserved as in original code)
