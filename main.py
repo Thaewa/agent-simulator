@@ -5,7 +5,7 @@ from simulator import instanceGenerator
 
 def main():
     generator = instanceGenerator()
-    simulator = generator.generateSimulationInstance("TSP-Hamiltonian")
+    simulator = generator.generateSimulationInstance("greedy")
     # # Run simulation for T steps
     T = 1000
     report = simulator.runSimulation(T)

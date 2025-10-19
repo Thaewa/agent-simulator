@@ -8,7 +8,7 @@ import numpy as np
 from utils import gaussian_attraction
 
 class instanceGenerator():
-    def __init__(self,larvae_to_wasps_ratio:float=0.3,percentage_foragers:float =0.1,min_number_of_cells:int = 100, max_number_of_cells:int = 300, \
+    def __init__(self,larvae_to_wasps_ratio:float=0.3,percentage_foragers:float =0.1,min_number_of_cells:int = 100, max_number_of_cells:int = 120, \
                  nest_fill_percentage:float = 0.3, forage_fill_percentage:float = 0.1, larvae_hunger_multiplier:float = 3.0, mean_food_capacity:float = 10.0, std_food_capacity:float = 3.0, 
                  forage_distance:int = 10,hunger_rate: float = 0.2):
         
@@ -309,6 +309,7 @@ class Simulator:
         forage_verification = self.verifyForage()
         return num_agents and grid_verification and forage_verification
 
+    
     def runSimulation(self, t: int) -> List[Dict]:
         """
         Run the simulation for t steps.
