@@ -6,6 +6,7 @@ from agents import Agent, Wasp, Larvae
 from agents import AgentType, WaspRole
 import numpy as np
 from utils import gaussian_attraction
+from logger import DataLogger
 
 class Simulator:
     """
@@ -30,6 +31,9 @@ class Simulator:
         self.gradients = {WaspRole.FEEDER:[],WaspRole.FORAGER:[]}
         self.grid = None
         self.forage = []
+
+        # Add logger here
+        self.logger = DataLogger()
     # ---------------------------
     # Core methods
     # ---------------------------
@@ -116,22 +120,6 @@ class Simulator:
         """Collect hunger values for wasp agents."""
         return {a.id: [a.hunger] for a in self.agents if isinstance(a, Wasp)}
 
-    def runSimulation(self, t: int) -> List[Dict]:
-        """
-        Run the simulation for t steps.
-        Returns a list of snapshots (dictionary per step).
-        """
-        results: List[Dict] = []
-        for _ in range(t):
-            self.step()
-            snapshot = {
-                "time": self.currentTime,
-                "movements": self.aggregateMovements(),
-                "hungerLarvae": self.aggregateHungerLarvae(),
-                "hungerWasp": self.aggregateHungerWasp(),
-            }
-            results.append(snapshot)
-        return results
     def verifyNumberAgents(self, min_feeders: int = 1, min_foragers: int = 1, min_larvae: int = 1) -> bool:
         
         """
@@ -250,6 +238,10 @@ class Simulator:
         """
         if not self.verifySimulationConditions():
             raise ValueError("Simulation conditions not met")
+        
+        # Ensure grid exists before simulation starts
+        if self.grid is None or self.grid.shape[0] == 0:
+            self.createGrid()
 
         i = 0
         while i < t:
@@ -299,7 +291,43 @@ class Simulator:
                 else:
                     agent.food = 0
 
+                # Add logger here after agent.step() and position update
+                self.logger.log_agent(
+                    timestamp=self.currentTime,
+                    agent_id=agent.id,
+                    agent_role=str(agent.role.name if isinstance(agent, Wasp) else "Larvae"),
+                    action=agent.storedEvents[-1] if agent.storedEvents else "none",
+                    target_id=self._parse_target_from_event(agent.storedEvents[-1] if agent.storedEvents else ""),
+                    position_x=agent.x,
+                    position_y=agent.y,
+                    hunger_level=agent.hunger,
+                    food_stored=agent.food,
+                    nest_layer=1 if isinstance(agent, Larvae) else 2 if agent.role == WaspRole.FEEDER else 3,
+                    larvae_hunger_avg=self._calc_avg_hunger(AgentType.LARVAE),
+                    total_food_in_nest=self._calc_total_food(),
+                    rush_intensity=self._estimate_rush(),
+                    exploration_bias=0.0
+                )
+
                 j += 1
+
+            # Add logger  Nest level after j loop
+            self.logger.log_nest(
+                timestamp=self.currentTime,
+                total_foragers=len([a for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FORAGER]),
+                total_feeders=len([a for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FEEDER]),
+                foraging_events=sum("foraged" in e for a in self.agents for e in a.storedEvents),
+                feeding_events=sum("fed" in e and "transfer" not in e for a in self.agents for e in a.storedEvents),
+                transfer_events=sum("transfer" in e for a in self.agents for e in a.storedEvents),
+                avg_hunger_foragers=self._calc_avg_hunger(WaspRole.FORAGER),
+                avg_hunger_feeders=self._calc_avg_hunger(WaspRole.FEEDER),
+                avg_hunger_larvae=self._calc_avg_hunger(AgentType.LARVAE),
+                food_balance_in_nest=self._calc_total_food(),
+                rush_intensity=self._estimate_rush(),
+                exploration_bias=0.0,
+                active_cells=len([a for a in self.agents if isinstance(a, Larvae) and a.hunger > 1]),
+                nest_size=len(self.agents)
+            )
 
             # Advance time
             self.currentTime += 1
@@ -313,3 +341,45 @@ class Simulator:
         report["hungerWasp"] = self.aggregateHungerWasp()
 
         return report
+
+    def _calc_avg_hunger(self, target_type):
+        if target_type == AgentType.LARVAE:
+            larvae = [a.hunger for a in self.agents if isinstance(a, Larvae)]
+            return np.mean(larvae) if larvae else 0
+        elif target_type == WaspRole.FORAGER:
+            foragers = [a.hunger for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FORAGER]
+            return np.mean(foragers) if foragers else 0
+        elif target_type == WaspRole.FEEDER:
+            feeders = [a.hunger for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FEEDER]
+            return np.mean(feeders) if feeders else 0
+        return 0
+
+    def _calc_total_food(self):
+        return sum(a.food for a in self.agents)
+
+    def _estimate_rush(self):
+        """Approximate how strongly feeders rush to unload food."""
+        feeders = [a for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FEEDER]
+        hungry = sum(1 for a in feeders if a.hunger > 1)
+        return hungry / len(feeders) if feeders else 0
+    
+    def _parse_target_from_event(self, event_text: str) -> str:
+        """
+        Extract target_id (like L1, W1, etc.) from the event string if available.
+
+        Examples:
+            'W1 fed L1' -> 'L1'
+            'W2 fed W1 (transfer)' -> 'W1'
+            'W2 tried to feed L2 but had no food' -> 'L2'
+            'W2 is in location [1.0, 1.0] and foraged food at location [1 1]' -> ''
+        """
+        if not event_text:
+            return ""
+
+        tokens = event_text.replace("(", "").replace(")", "").replace(",", "").split()
+        for token in tokens:
+            # If token looks like an agent ID
+            if token.startswith(("L", "W")) and len(token) > 1:
+                return token
+        return ""
+    
