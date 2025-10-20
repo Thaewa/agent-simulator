@@ -7,6 +7,8 @@ from agents import Agent, Wasp, Larvae
 from agents import AgentType, WaspRole
 import numpy as np
 from utils import gaussian_attraction, in_circle, outside_circle
+from logger import DataLogger  #Added: Data logging for simulation
+
 
 class instanceGenerator:
     r"""
@@ -96,6 +98,7 @@ class instanceGenerator:
         proportion_inner_larvae: float = 0.5,
         grid_buffer:int = 1,
         forage_buffer:int = 10
+
     ) -> None:
         self.larvae_to_wasps_ratio = larvae_to_wasps_ratio
         self.percentage_foragers = percentage_foragers
@@ -383,6 +386,11 @@ class Simulator:
         self.potential_feeder_to_forager: float = potential_feeder_to_forager
         self.max_role_changes: int = max_role_changes
         self.role_changes_frequency: int = role_changes_frequency
+        # Initialize DataLogger
+        self.logger = DataLogger(
+            agent_log_path="agent_log.csv",
+            nest_log_path="nest_log.csv"
+        )
 
     # ---------------------------
     # Core methods
@@ -651,6 +659,29 @@ class Simulator:
                 agent = self.agents[j]
                 if isinstance(agent, Wasp):
                     self.moveAgent(agent)
+                    # Log agent state for this timestep
+                    if isinstance(agent, (Wasp, Larvae)):
+                        self.logger.log_agent(
+                            timestamp=self.currentTime,
+                            agent_id=agent.id,
+                            agent_role=str(agent.role.name if isinstance(agent, Wasp) else "Larvae"),
+                            action=agent.storedEvents[-1] if agent.storedEvents else "none",
+                            target_id=self._parse_target_from_event(agent.storedEvents[-1]) if agent.storedEvents else "",
+                            position_x=agent.x,
+                            position_y=agent.y,
+                            hunger_level=getattr(agent, "hunger", 0),
+                            food_stored=getattr(agent, "food", 0),
+                            nest_layer=(
+                                1 if isinstance(agent, Larvae)
+                                else 2 if agent.role == WaspRole.FEEDER
+                                else 3
+                            ),
+                            larvae_hunger_avg=self._calc_avg_hunger(AgentType.LARVAE),
+                            total_food_in_nest=self._calc_total_food(),
+                            rush_intensity=self._estimate_rush(),
+                            exploration_bias=0.0
+                        )
+
                 self.updateAgent(agent)
                 if isinstance(agent, Wasp):
                     count_roles, total_foragers = self.updateRoles(
@@ -659,6 +690,24 @@ class Simulator:
                 j += 1
 
             self.currentTime += 1
+            # Log nest-level stats once per timestep
+            self.logger.log_nest(
+                timestamp=self.currentTime,
+                total_foragers=len([a for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FORAGER]),
+                total_feeders=len([a for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FEEDER]),
+                foraging_events=sum("foraged" in e for a in self.agents for e in getattr(a, "storedEvents", [])),
+                feeding_events=sum("fed" in e and "transfer" not in e for a in self.agents for e in getattr(a, "storedEvents", [])),
+                transfer_events=sum("transfer" in e for a in self.agents for e in getattr(a, "storedEvents", [])),
+                avg_hunger_foragers=self._calc_avg_hunger(WaspRole.FORAGER),
+                avg_hunger_feeders=self._calc_avg_hunger(WaspRole.FEEDER),
+                avg_hunger_larvae=self._calc_avg_hunger(AgentType.LARVAE),
+                food_balance_in_nest=self._calc_total_food(),
+                rush_intensity=self._estimate_rush(),
+                exploration_bias=0.0,
+                active_cells=len([a for a in self.agents if isinstance(a, Larvae) and getattr(a, "hunger", 0) > 1]),
+                nest_size=len(self.agents)
+            )
+
             if i % 10 == 0:
                 print(f"Step {i}")
             i += 1
@@ -810,3 +859,33 @@ class Simulator:
             return
         for role in self.gradients:
             self.gradients[role] = np.zeros(self.grid.shape[0])
+
+    # === Logger helper functions ===
+    def _calc_avg_hunger(self, target_type):
+        if target_type == AgentType.LARVAE:
+            larvae = [a.hunger for a in self.agents if isinstance(a, Larvae)]
+            return np.mean(larvae) if larvae else 0
+        elif target_type == WaspRole.FORAGER:
+            foragers = [a.hunger for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FORAGER]
+            return np.mean(foragers) if foragers else 0
+        elif target_type == WaspRole.FEEDER:
+            feeders = [a.hunger for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FEEDER]
+            return np.mean(feeders) if feeders else 0
+        return 0
+
+    def _calc_total_food(self):
+        return sum(getattr(a, "food", 0) for a in self.agents)
+
+    def _estimate_rush(self):
+        feeders = [a for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FEEDER]
+        hungry = sum(1 for a in feeders if getattr(a, "hunger", 0) > 1)
+        return hungry / len(feeders) if feeders else 0
+
+    def _parse_target_from_event(self, event: str) -> str:
+        if not event:
+            return ""
+        parts = event.split()
+        for p in parts:
+            if p.startswith("W") or p.startswith("L"):
+                return p
+        return ""
