@@ -209,3 +209,27 @@ __marimo__/
 # Simulation logs
 agent_log_*.csv
 nest_log_*.csv
+
+# Analysis outputs (plots, summaries, etc.)
+analysis_outputs/
+analysis/*.png
+analysis/*.csv
+analysis_outputs/*.png
+analysis_outputs/*.csv
+
+# Temporary test files or exported results
+*.tmp
+*.log
+*.bak
+
+# Data cache and large dataset exports
+data/
+datasets/
+exports/
+
+# Miscellaneous files
+*.zip
+*.tar
+*.tar.gz
+*.bak
+*.old
