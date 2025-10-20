@@ -205,3 +205,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Simulation logs
+agent_log_*.csv
+nest_log_*.csv
