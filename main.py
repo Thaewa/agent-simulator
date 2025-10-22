@@ -7,9 +7,11 @@ import os
 
 def main():
     
+    # Load config
     with open(os.path.join("config", "config.yaml"), "r") as f:
         args = yaml.safe_load(f)
-        
+
+    # Generate simulator  
     generator = instanceGenerator(**args['instance_generator'])
     generator.waspDictionary(args['wasp'])
     generator.larvaeDictionary(args['larvae'])
