@@ -241,3 +241,7 @@ exports/
 # Python cache
 __pycache__/
 *.pyc
+
+# Ignore analysis backup plots
+analysis_outputs - backup/
+
