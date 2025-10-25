@@ -192,7 +192,7 @@ for candidate in ["agent_role", "role"]:
         break
 
 if role_col is None:
-    raise KeyError("❌ No role column found in agent log. Expected one of: 'agent_role' or 'role'.")
+    raise KeyError("No role column found in agent log. Expected one of: 'agent_role' or 'role'.")
 
 print(f"Using column '{role_col}' for role grouping.")
 
@@ -234,6 +234,16 @@ X = StandardScaler().fit_transform(numeric_cols)
 
 pca = PCA(n_components=2)
 pca_result = pca.fit_transform(X)
+
+#Create DataFrame to show loading of each feature on PC1, PC2
+loadings = pd.DataFrame(
+    pca.components_.T,
+    columns=["PC1", "PC2"],
+    index=numeric_cols.columns
+)
+
+print("PCA Loadings on step 10:")
+print(loadings)
 
 plt.figure(figsize=(8,6))
 sc = plt.scatter(
@@ -346,6 +356,18 @@ X_cluster = StandardScaler().fit_transform(df_nest[features_for_cluster].fillna(
 kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
 df_nest["behavior_state"] = kmeans.fit_predict(X_cluster)
 
+pca_cluster = PCA(n_components=2)
+X_pca_cluster = pca_cluster.fit_transform(X_cluster)
+
+loadings = pd.DataFrame(
+    pca_cluster.components_.T,
+    columns=['PC1', 'PC2'],
+    index=features_for_cluster
+)
+
+print("\nPCA Loadings for clustering features:")
+print(loadings.round(6))
+
 plt.figure(figsize=(8,6))
 sns.scatterplot(
     x=pca_result[:,0], y=pca_result[:,1],
@@ -360,7 +382,6 @@ plt.savefig(os.path.join(OUTPUT_DIR, "11_behavioral_clusters.png"), dpi=300)
 plt.show()
 plt.close()
 print(" Behavioral clustering plot saved.")
-
 
 # ======================================================================
 # Step 15: Pairwise Correlation Plot (Seaborn PairPlot)
