@@ -151,6 +151,14 @@ class Agent(ABC):
         :rtype: None
         """
         raise NotImplementedError
+
+    def _updatePosition(self):
+        """Base fallback so subclasses can safely call super()._updatePosition()."""
+        if hasattr(self, "next_step"):
+            self.x += self.next_step.get("x", 0)
+            self.y += self.next_step.get("y", 0)
+
+    
 # ---------------------------
 # Subclass: Wasp
 # ---------------------------
@@ -337,6 +345,9 @@ class Wasp(Agent):
         self.smellRadiusBuffer = smell_radius_buffer
         self.feeder_to_forager_probability = feeder_to_forager_probability
         self.forager_to_feeder_probability = forager_to_feeder_probability
+        self.distance_traveled = 0.0 # <---- Newly added
+        self.feed_count = 0 # <---- Newly added
+        self.hunger_cue = 0.0 # <---- # stores latest hunger cue sensed
 
     def updateRolePersistence(self) -> None:
         """
@@ -365,39 +376,39 @@ class Wasp(Agent):
         self.maxHungerCue = updates if self.maxHungerCue < updates else self.maxHungerCue
 
     # Extra methods
-    def feedWasp(self, wasp: Agent, passed_food: int) -> None:
-        """
-        Transfer food to another wasp and update hunger cues.
+#    def feedWasp(self, wasp: Agent, passed_food: int) -> None:
+#        """
+#        Transfer food to another wasp and update hunger cues.
+#
+#        :param wasp: Target wasp to receive food.
+#        :type wasp: Agent
+#        :param passed_food: Units of food to transfer.
+#        :type passed_food: int
+#        :return: ``None``.
+#        :rtype: None
+#        """
+#        if wasp.hungerCue > 0.0:
+#            self.hungerCue = (self.hungerCue + wasp.hungerCue) / 2
+#            self.food -= passed_food
+#            wasp.food += passed_food
+#            wasp.hunger = self.noHunger
+#            self.storedEvents.append(f"{self.id} fed {wasp.id} (transfer)")
 
-        :param wasp: Target wasp to receive food.
-        :type wasp: Agent
-        :param passed_food: Units of food to transfer.
-        :type passed_food: int
-        :return: ``None``.
-        :rtype: None
-        """
-        if wasp.hungerCue > 0.0:
-            self.hungerCue = (self.hungerCue + wasp.hungerCue) / 2
-            self.food -= passed_food
-            wasp.food += passed_food
-            wasp.hunger = self.noHunger
-            self.storedEvents.append(f"{self.id} fed {wasp.id} (transfer)")
-
-    def feedLarvae(self, larvae: Agent, passed_food: int) -> None:
-        """
-        Transfer food to a larva and reset its hunger.
-
-        :param larvae: Target larva to receive food.
-        :type larvae: Agent
-        :param passed_food: Units of food to transfer.
-        :type passed_food: int
-        :return: ``None``.
-        :rtype: None
-        """
-        self.food -= passed_food
-        larvae.food += passed_food
-        larvae.hunger = larvae.noHunger
-        self.storedEvents.append(f"{self.id} fed {larvae.id}")
+#    def feedLarvae(self, larvae: Agent, passed_food: int) -> None:
+#        """
+#        Transfer food to a larva and reset its hunger.
+#
+#        :param larvae: Target larva to receive food.
+#        :type larvae: Agent
+#        :param passed_food: Units of food to transfer.
+#        :type passed_food: int
+#        :return: ``None``.
+#        :rtype: None
+#        """
+#        self.food -= passed_food
+#        larvae.food += passed_food
+#        larvae.hunger = larvae.noHunger
+#        self.storedEvents.append(f"{self.id} fed {larvae.id}")
 
     def feed(self, target: Agent) -> None:
         """
@@ -561,11 +572,19 @@ class Wasp(Agent):
         :return: ``None``.
         :rtype: None
         """
+        if not hasattr(self, "x") or not hasattr(self, "y"):
+            return
+        
+        prev_x, prev_y = self.x, self.y
         if self.path_finding == "random_walk":
             self.prevStep = self.getPosition()
         self.x += self.next_step["x"]
         self.y += self.next_step["y"]
         self.next_step = {"x": 0, "y": 0}
+        # <--- Newly added: distance traveled ---
+        if prev_x is None or prev_y is None: 
+            return
+        self.distance_traveled += np.sqrt((self.x - prev_x) ** 2 + (self.y - prev_y) ** 2)
 
     def _generateMoveEvent(self) -> None:
         """
@@ -614,6 +633,7 @@ class Wasp(Agent):
         :rtype: None
         """
         self.hungerCue = hungerCue
+        self.hunger_cue = hungerCue # sync for logger
 
     def updateFeltGradient(self, grid: np.ndarray, x0: float, y0: float, feltGradient: np.ndarray) -> np.ndarray:
         """
@@ -973,6 +993,29 @@ class Wasp(Agent):
             self.forage(forage)
 
         self.hungerCue = self.hungerCue * self.hungerCueDecay
+        self.hunger_cue = self.hungerCue   # sync for logger
+
+    # ======================================================================
+    # Added for foraging metrics (distance & feed count)
+    # ----------------------------------------------------------------------
+
+    def feedLarvae(self, larva, passed_food=None):
+        if passed_food is None:
+            passed_food = self.foodTransferToLarvae
+        self.feed_count += 1
+        self.food -= passed_food
+        larva.food += passed_food
+        larva.hunger = larva.noHunger
+        self.storedEvents.append(f"{self.id} fed {larva.id}")
+
+    def feedWasp(self, wasp, passed_food=None):
+        if passed_food is None:
+            passed_food = self.foodTransferToWasp
+        self.feed_count += 1
+        self.food -= passed_food
+        wasp.food += passed_food
+        wasp.hunger = self.noHunger
+        self.storedEvents.append(f"{self.id} fed {wasp.id} (transfer)")
 
 # ---------------------------
 # Subclass: Larvae

@@ -670,6 +670,7 @@ class Simulator:
                             position_x=agent.x,
                             position_y=agent.y,
                             hunger_level=getattr(agent, "hunger", 0),
+                            hunger_cue=getattr(agent, "hunger_cue", 0),
                             food_stored=getattr(agent, "food", 0),
                             nest_layer=(
                                 1 if isinstance(agent, Larvae)
@@ -708,10 +709,53 @@ class Simulator:
                 nest_size=len(self.agents)
             )
 
+            # ======================================================================
+            # Added for larvae logging (per timestep)
+            # ----------------------------------------------------------------------
+            for larva in [a for a in self.agents if a.__class__.__name__ == "Larvae"]:
+                self.logger.log_larvae(
+                    timestamp=self.currentTime,
+                    larva_id=getattr(larva, "id", "L?"),
+                    position_x=larva.x,
+                    position_y=larva.y,
+                    hunger_level=larva.hunger,
+                    food_received=getattr(larva, "food", 0),
+                    distance_to_nest=np.sqrt(larva.x**2 + larva.y**2)
+                )
+
             if i % 10 == 0:
                 print(f"Step {i}")
             i += 1
             self.clearGradients()
+        
+        # ======================================================================
+        # Added for aggregate logging (after simulation ends)
+        # ----------------------------------------------------------------------
+        from datetime import datetime
+        wasps = [a for a in self.agents if a.__class__.__name__ == "Wasp"]
+        larvae = [a for a in self.agents if a.__class__.__name__ == "Larvae"]
+
+        feed_counts = [w.feed_count for w in wasps] if wasps else []
+        mean_feed_freq = np.mean(feed_counts) if feed_counts else 0
+        std_feed_freq = np.std(feed_counts) if feed_counts else 0
+        num_wasps = len(wasps)
+        num_larvae = len(larvae)
+        wasp_to_larvae_ratio = num_wasps / num_larvae if num_larvae > 0 else 0
+
+        self.logger.log_aggregate(
+            simulation_id=datetime.now().strftime("%Y%m%d_%H%M%S"),
+            pathfinding_mode=getattr(self.agents[0], "path_finding", "unknown"),
+            mean_hunger_larvae=np.mean([a.hunger for a in self.agents if a.__class__.__name__ == "Larvae"]),
+            max_hunger_larvae=np.max([a.hunger for a in self.agents if a.__class__.__name__ == "Larvae"]),
+            min_hunger_larvae=np.min([a.hunger for a in self.agents if a.__class__.__name__ == "Larvae"]),
+            mean_distance_per_feed=self._calc_distance_per_feed(),
+            feeding_efficiency=self._calc_feeding_efficiency(),
+            mean_feed_freq=mean_feed_freq,  # new field
+            std_feed_freq=std_feed_freq,    # new column
+            num_wasps=num_wasps,                 # 
+            num_larvae=num_larvae,               # 
+            wasp_to_larvae_ratio=wasp_to_larvae_ratio  # 
+        )
 
         report: Dict[str, Dict] = {}
         report["movements"] = self.aggregateMovements()
@@ -719,6 +763,23 @@ class Simulator:
         report["hungerLarvae"] = self.aggregateHungerLarvae()
         report["hungerWasp"] = self.aggregateHungerWasp()
         return report
+
+    # ======================================================================
+    #  Added helper metrics
+    # ----------------------------------------------------------------------
+    def _calc_distance_per_feed(self):
+        distances = []
+        for wasp in [a for a in self.agents if a.__class__.__name__ == "Wasp"]:
+            if wasp.feed_count > 0 and hasattr(wasp, "distance_traveled"):
+                distances.append(wasp.distance_traveled / wasp.feed_count)
+        return np.mean(distances) if distances else 0
+
+    def _calc_feeding_efficiency(self):
+        larvae = [a for a in self.agents if a.__class__.__name__ == "Larvae"]
+        if not larvae:
+            return 0
+        fed = sum(1 for a in larvae if getattr(a, "food", 0) > 0)
+        return fed / len(larvae)
 
     # ---------------------------
     # Internal helpers

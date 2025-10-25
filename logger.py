@@ -18,7 +18,7 @@ class DataLogger:
 
         self.agent_headers = [
             "timestamp","agent_id","agent_role","action","target_id",
-            "position_x","position_y","hunger_level","food_stored",
+            "position_x","position_y","hunger_level","hunger_cue","food_stored",
             "nest_layer","larvae_hunger_avg","total_food_in_nest",
             "rush_intensity","exploration_bias"
         ]
@@ -45,4 +45,55 @@ class DataLogger:
         """Record one nest-level summary snapshot."""
         with open(self.nest_log_path, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=self.nest_headers)
+            writer.writerow(kwargs)
+
+    # ======================================================================
+    # Added for larvae logging & aggregate metrics
+    # ----------------------------------------------------------------------
+    # Adds new logs: larvae_log_*.csv and aggregate_results_*.csv
+    # These enable per-larva hunger tracking and per-simulation summary stats.
+    # ======================================================================
+
+    def _init_larvae_logs(self):
+        """Initialize additional logs for larvae and aggregate summaries."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_dir = "output_logs"
+        os.makedirs(base_dir, exist_ok=True)
+
+        self.larvae_log_path = os.path.join(base_dir, f"larvae_log_{timestamp}.csv")
+        self.aggregate_log_path = os.path.join(base_dir, f"aggregate_results_{timestamp}.csv")
+
+        self.larvae_headers = [
+            "timestamp","larva_id","position_x","position_y",
+            "hunger_level","food_received","distance_to_nest"
+        ]
+        self.aggregate_headers = [
+            "simulation_id","pathfinding_mode",
+            "mean_hunger_larvae","max_hunger_larvae","min_hunger_larvae",
+            "mean_distance_per_feed","feeding_efficiency",
+             "mean_feed_freq", "std_feed_freq",
+             "num_wasps","num_larvae","wasp_to_larvae_ratio" # New columns
+        ]
+
+        # Create CSV files
+        with open(self.larvae_log_path, "w", newline="") as f:
+            csv.writer(f).writerow(self.larvae_headers)
+        with open(self.aggregate_log_path, "w", newline="") as f:
+            csv.writer(f).writerow(self.aggregate_headers)
+
+    def log_larvae(self, **kwargs):
+        """Record per-timestep larvae states."""
+        if not hasattr(self, "larvae_log_path"):
+            self._init_larvae_logs()
+        with open(self.larvae_log_path, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self.larvae_headers)
+            writer.writerow(kwargs)
+
+    def log_aggregate(self, **kwargs):
+        """Record per-simulation summary statistics."""
+        if not hasattr(self, "aggregate_log_path"):
+            self._init_larvae_logs()
+
+        with open(self.aggregate_log_path, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self.aggregate_headers)
             writer.writerow(kwargs)

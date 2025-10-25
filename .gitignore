@@ -233,3 +233,11 @@ exports/
 *.tar.gz
 *.bak
 *.old
+
+# Logs and output files
+/output_logs/
+*.csv
+
+# Python cache
+__pycache__/
+*.pyc
