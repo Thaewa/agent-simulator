@@ -245,3 +245,7 @@ __pycache__/
 # Ignore analysis backup plots
 analysis_outputs - backup/
 
+# Ignore all generated plot outputs
+output_plots_*/
+output_plots_*/**/*.png
+

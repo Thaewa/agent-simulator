@@ -46,3 +46,9 @@ larvae:
 simulator:
   grid_buffer: 1
   forage_buffer: 10
+
+simulation:
+  num_runs: 20
+  run_mode: per_round   # or per_algorithm
+  pathfinding_mode: greedy
+
