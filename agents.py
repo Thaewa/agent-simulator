@@ -334,7 +334,7 @@ class Wasp(Agent):
         self.repulsionRadius = repulsion_radius
         self.rolePersistence = role_persistence
         self.hungerCueDecay = hunger_cue_decay
-        self.prevStep = None if path_finding != "random_walk" else self.getPosition()
+        self.prevStep = self.getPosition()
         self.path = None
         self.rolePersistenceUpdate = 0
         self.unloadOnlyChance = unload_only_chance
@@ -345,6 +345,7 @@ class Wasp(Agent):
         self.smellRadiusBuffer = smell_radius_buffer
         self.feeder_to_forager_probability = feeder_to_forager_probability
         self.forager_to_feeder_probability = forager_to_feeder_probability
+        self.hungerCue = 0
         self.distance_traveled = 0.0 # <---- Newly added
         self.feed_count_larvae = 0 # <---- Newly added
         self.feed_count_wasp = 0 # <---- Newly added
@@ -396,7 +397,6 @@ class Wasp(Agent):
             wasp.hunger = self.noHunger
             self.feed_count_wasp += 1 
             self.storedEvents.append(f"{self.id} fed {wasp.id} (transfer)")
-
     def feedLarvae(self, larvae: Agent, passed_food: int) -> None:
         """
         Transfer food to a larva and reset its hunger.
@@ -426,11 +426,8 @@ class Wasp(Agent):
         :return: ``None``.
         :rtype: None
         """
-        passed_food = (
-            self.foodTransferToLarvae
-            if target.type == AgentType.LARVAE
-            else self.foodTransferToWasp
-        )
+        passed_food = self.foodTransferToLarvae if target.type == AgentType.LARVAE else self.foodTransferToWasp
+        
         if self.food > passed_food:
             if self.hungerCuesHigh() and self.role == WaspRole.FORAGER:
                 if isinstance(target, Larvae):
@@ -442,12 +439,13 @@ class Wasp(Agent):
                 if isinstance(target, Larvae):
                     self.feedLarvae(target, passed_food)
                 else:
-                    self.feedWasp(target, passed_food)
+                    if target.food+passed_food < target.maxFood:
+                        self.feedWasp(target, passed_food)
         else:
             self.storedEvents.append(
                 f"{self.id} tried to feed {target.id} but had no food"
             )
-
+                    
     def forage(self, forage: List[np.ndarray]) -> None:
         """
         Move towards foraging points and possibly gain food.
@@ -465,15 +463,12 @@ class Wasp(Agent):
         idx = self.nearbyEntity(forage)
         if idx.shape[0] > 0:
             for id in idx:
-                if random.random() < self.chanceOfForaging and (
-                    self.food + self.forageIncrease < self.maxFood
-                ):
+                if self.food<self.maxFood and np.random.rand() < self.chanceOfForaging:
                     self.food += self.maxFood  # (Behavior preserved as in original code)
                     self.hunger = self.noHunger
                     self.storedEvents.append(
                         f"{self.id} is in location {self.getPosition()} and foraged food at location {forage[id]}"
                     )
-
     def inOuterNest(self) -> bool:
         """
         Check if the next position remains inside the outer nest radius.
@@ -750,6 +745,7 @@ class Wasp(Agent):
         :type foragersPositions: numpy.ndarray | None
         :param waspPositions: Optional ``(K, 2)`` array of wasp positions.
         :type waspPositions: numpy.ndarray | None
+
         :return: ``None``.
         :rtype: None
         """
@@ -791,6 +787,8 @@ class Wasp(Agent):
             while self.prevStep[0] == (self.x + new_x) and self.prevStep[1] == (self.y + new_y):
                 new_x = np.random.choice(self.oneStepList, 1)[0]
                 new_y = np.random.choice(self.oneStepList, 1)[0]
+        self.next_step[list(self.next_step.keys())[0]] = new_x
+        self.next_step[list(self.next_step.keys())[1]] = new_y
 
     def estimate_path(self, x, y, larvae_positions, X=None, Y=None):
         """
@@ -808,7 +806,7 @@ class Wasp(Agent):
         arr_full = np.ones_like(X, dtype=bool)
         G = grid_graph_from_array(arr_full, X, Y)
         int_position = [int(pos) for pos in self.getPosition()]
-        nodes = np.array(relevant_larvae_position)
+        nodes = np.array(larvae_positions)
         nodes = (nodes.astype(int)).tolist()
         nodes_list = [tuple(node) for node in nodes]
         tsp = nx.approximation.traveling_salesman_problem(
@@ -836,15 +834,18 @@ class Wasp(Agent):
         x = np.arange(min(min_x - 2, self.x - 2), max(max_x + 2, self.x + 2))
         y = np.arange(min(min_y - 2, self.y - 2), max(max_y + 2, self.y + 2))
         X, Y = np.meshgrid(x, y)
-        m = int(self.food / self.foodTransferToLarvae)
-        _, relevant_larvae_position = m_closest_rows(larvaePositions[index], np.array(self.getPosition()), min(len(index), m))
-        if relevant_larvae_position.shape[0] == 1:
-            pass
+        m = np.floor((self.food / self.foodTransferToLarvae))
+        if m < len(index) and m>0:
+            _, relevant_larvae_position = m_closest_rows(larvaePositions[index], np.array(self.getPosition()), min(len(index), int(m)))
+            if relevant_larvae_position.shape[0] == 1:
+                pass
+            else:
+                self.path = self.estimate_path(x, y, relevant_larvae_position, X, Y)
+                self.next_step["x"] = self.path[0][0] - self.x
+                self.next_step["y"] = self.path[0][1] - self.y
+                self.path = self.path[1:]
         else:
-            self.path = self.estimate_path(x, y, relevant_larvae_position, X, Y)
-            self.next_step["x"] = self.path[0][0] - self.x
-            self.next_step["y"] = self.path[0][1] - self.y
-            self.path = self.path[1:]
+            pass
 
     def shortest_path_finding(self, larvaePositions: np.ndarray) -> None:
         """
@@ -857,9 +858,7 @@ class Wasp(Agent):
         """
         if self.path is None:
             index = np.where(
-                in_circle((larvaePositions[:, 0] - self.x), (larvaePositions[:, 1] - self.y), (self.smellRadius + self.smellRadiusBuffer))
-                & in_circle((larvaePositions[:, 0] - self.x), (larvaePositions[:, 1] - self.y), (0))
-            )[0]
+                in_circle((larvaePositions[:, 0] - self.x), (larvaePositions[:, 1] - self.y), (self.smellRadius + self.smellRadiusBuffer)))[0]
             if len(index) == 0:
                 pass
             else:
@@ -907,21 +906,13 @@ class Wasp(Agent):
         :return: ``None``.
         :rtype: None
         """
-        hungerCue = sum(gradientField[self.role]) / gradientField[self.role].shape[0]
-        self.updateHungerCue(hungerCue)
         self.updateHungerCueRange()
-
-        if self.food < 1.1:
-            self.greedy_path_finding(grid, gradientField, forage, foragersPositions, waspPositions)
-        elif self.food < self.foodTransferToWasp and self.role == WaspRole.FORAGER:
-            self.greedy_path_finding(grid, gradientField, forage, foragersPositions, waspPositions)
-        else:
-            if self.path_finding == "greedy":
-                self.greedy_path_finding(grid, gradientField, forage, foragersPositions, waspPositions)
-            elif "random_walk" in self.path_finding:
+        self.greedy_path_finding(grid, gradientField, forage, foragersPositions, waspPositions)
+        
+        if self.role == WaspRole.FEEDER:
+            if "random_walk" in self.path_finding:
                 self.random_walk_path_finding()
-            elif "TSP" in self.path_finding:
-                self.greedy_path_finding(grid, gradientField, forage, foragersPositions, waspPositions)
+            if "TSP" in self.path_finding:
                 self.shortest_path_finding(larvaePositions)
             self.storedEvents.append(f"{self.id} sensed gradient ")
 
@@ -964,9 +955,7 @@ class Wasp(Agent):
         idx = self.nearbyEntity(agents_position)
         if idx.shape[0] > 0:
             for id in idx:
-                #print(f"[DEBUG] {self.id} near {agents[id].id} | hunger={agents[id].hunger:.2f} | food={self.food:.2f}")
                 if random.random() > self.chanceOfFeeding and agents[id].hunger > 1:
-                    #print(f"[DEBUG] Feeding {agents[id].id}")
                     self.feed(agents[id])
 
     def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> None:
@@ -1003,11 +992,9 @@ class Wasp(Agent):
             elif self.role == WaspRole.FEEDER:
                 self.feedNearby(larvaes)
 
-        if self.role == WaspRole.FORAGER and forage is not None:
+        if self.role == WaspRole.FORAGER and forage is not None and self.food < self.maxFood:
             self.forage(forage)
-
         self.hungerCue = self.hungerCue * self.hungerCueDecay
-
 # ---------------------------
 # Subclass: Larvae
 # ---------------------------

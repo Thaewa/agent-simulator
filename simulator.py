@@ -8,7 +8,7 @@ from agents import AgentType, WaspRole
 import numpy as np
 from utils import gaussian_attraction, in_circle, outside_circle
 from logger import DataLogger  #Added: Data logging for simulation
-
+import matplotlib.pyplot as plt
 
 class instanceGenerator:
     r"""
@@ -255,6 +255,7 @@ class instanceGenerator:
         :rtype: Wasp
         """
         max_food = np.random.normal(self.mean_food_capacity, self.std_food_capacity, 1)[0]
+        print(max_food)
         wasp = Wasp(
                 agent_id="W" + str(x) + str(y),
                 x=x,
@@ -313,7 +314,7 @@ class instanceGenerator:
         )
 
         forage_indices = np.where(
-            in_circle(grid[:, 0], grid[:, 1], radius_forage)
+            in_circle(grid[:, 0], grid[:, 1], radius_forage+radius_nest+ int(self.forage_buffer / 2) )
             & outside_circle(grid[:, 0], grid[:, 1], radius_nest + int(self.forage_buffer / 2))
         )[0]
         chosen_forage_indices_forage = np.random.choice(
@@ -328,13 +329,11 @@ class instanceGenerator:
 
         chosen_nest_indices_feeders = np.random.choice(inner_nest_indices, total_feeders, replace=False)
         chosen_nest_indices_foragers = np.random.choice(nest_indices, total_foragers, replace=False)
-
         simulator = self.addForaging(chosen_forage_indices_forage, grid, simulator)
         simulator = self.addLarvaes(chosen_nest_indices_larvaes, inner_chosen_nest_indices_larvaes, grid, simulator)
         simulator = self.addWasps(
             chosen_nest_indices_feeders, chosen_nest_indices_foragers, grid, simulator
         )
-
         return simulator
 
 
@@ -700,9 +699,12 @@ class Simulator:
                 active_cells=len([a for a in self.agents if isinstance(a, Larvae) and getattr(a, "hunger", 0) > 1]),
                 nest_size=len(self.agents)
             )
-            # Start logging from time = 1 to avoid duplicate timestamp = 0
-            self.currentTime = 1
+            
         while i < t:
+            if i % 10 == 0:
+                hungerCue = np.mean([ getattr(agent, "hungerCue", 0) for agent in self.agents if isinstance(agent, Wasp) ])
+                larvaeHunger = np.mean([ getattr(agent, "hunger", 0) for agent in self.agents if isinstance(agent, Larvae)])        
+                print(hungerCue,larvaeHunger,i)
             self.accumulateGradients()
 
             count_roles = 0
@@ -941,7 +943,7 @@ class Simulator:
         if agent.inOuterNest():
             local_hunger_cue = agent.estimateLocalHungerCue(self.gradients[agent.role], self.grid)
             agent.updateHungerCue(local_hunger_cue / self.gradients[agent.role].shape[0])
-
+            
         position_foragers = [agent_.getPosition() for agent_ in wasps if agent_.role == WaspRole.FORAGER]
         position_wasp = [wasp.getPosition() for wasp in wasps if agent.id != wasp.id]
 
@@ -1025,7 +1027,7 @@ class Simulator:
                     total_foragers -= 1
                     agent.updateRolePersistence()
                     count_roles += 1
-
+            
         if agent.rolePersistence > 0:
             agent.rolePersistence -= 1
         return count_roles, total_foragers

@@ -127,7 +127,7 @@ def plot_larvae_hunger_over_time():
 
         ax.set_title(f"{mode.capitalize()} mode")
         ax.set_ylabel("Hunger level")
-        ax.set_ylim([0, 10])  # set max y to 10
+        ax.set_ylim([0.8, 3])  # set max y to 10
         ax.legend()
 
     axes[-1].set_xlabel("Time step")
@@ -236,20 +236,27 @@ def plot_wasp_hunger_cue_over_time():
 
 # 4️ Req 4: Forager count vs hunger cue
 def plot_foragers_vs_hunger_cue():
+    """
+    Generate a box plot of hunger cue distribution per number of foragers,
+    with data points colored by pathfinding mode.
+    """
     n = load_csvs("output_logs/*/nest_log_*.csv")
     a = load_csvs("output_logs/*/agent_log_*.csv")
     if n.empty or a.empty:
         print("[SKIP] Missing logs for forager-hunger.")
         return
+
     a_mean = a.groupby(["__mode__","timestamp"])["hunger_cue"].mean().reset_index()
     merged = n.merge(a_mean, on=["__mode__","timestamp"], how="inner")
-    plt.figure(figsize=(6,4))
-    for mode, grp in merged.groupby("__mode__"):
-        plt.scatter(grp["total_foragers"], grp["hunger_cue"],
-                    label=mode, s=12, color=COLORS.get(mode,"gray"))
+
+    plt.figure(figsize=(10, 6))
+    # Use seaborn for a categorical plot (boxplot)
+    import seaborn as sns
+    sns.boxplot(data=merged, x="total_foragers", y="hunger_cue", hue="__mode__", palette=COLORS)
+
     plt.xlabel("# Foragers")
     plt.ylabel("Average hunger cue")
-    plt.title("Foragers vs hunger cue")
+    plt.title("Hunger Cue Distribution by Number of Foragers")
     plt.legend()
     plot_caption()
     plt.tight_layout()
