@@ -119,10 +119,13 @@ class instanceGenerator:
     # Building blocks
     # -------------------------
     def waspDictionary(self, wasp_config: dict):
+        # Store wasp configuration in a dictionary from the configuration file
         self.wasp_dictionary = wasp_config
     def larvaeDictionary(self, larvae_config: dict):
+        # Store larvae configuration in a dictionary from the configuration file
         self.larvae_dictionary = larvae_config
     def simulatorDictionary(self, simulator_config: dict):
+        # Store simulator configuration in a dictionary from the configuration file
         self.simulator_dictionary = simulator_config
     def generateLarvae(self, x: int, y: int) -> "Larvae":
         """
@@ -137,10 +140,14 @@ class instanceGenerator:
         :return: Newly created larvae agent.
         :rtype: Larvae
         """
+        # Randomly sample current food and hunger levels
         random_food = np.random.choice([0.9, 3, 5], 1)[0]
         random_hunger = 1 if random_food > 1 else 2
+        # Name larvae by their grid coordinates
         agent_id = "L" + str(x) + str(y)
+        # Randomly choose a hunger multiplier for the larvae
         random_hunger_multiplier = np.random.choice([1.0, self.larvae_dictionary['hunger_rate_multiplier']], 1)[0]
+        # Populate larvae given the configuration file and the information estimated above
         return Larvae(
             agent_id,
             x=x,
@@ -160,6 +167,7 @@ class instanceGenerator:
         :return: ``(N, 2)`` array of integer coordinates (x, y).
         :rtype: numpy.ndarray
         """
+        # Define the grid of the simulation by configuration file. 
         grid_x, grid_y = np.mgrid[-radius : radius + self.grid_buffer, -radius : radius + self.grid_buffer]
         grid = np.concatenate((grid_x.reshape(-1, 1), grid_y.reshape(-1, 1)), axis=1)
         return grid
@@ -231,10 +239,12 @@ class instanceGenerator:
         """
         for row in chosen_nest_indices_feeders:
             wasp = self.generateWasp(grid[row, 0], grid[row, 1])
+            # Let wasps in the inner nest be feeders
             wasp.role = WaspRole.FEEDER
             simulator.addAgent(wasp)
         for row in chosen_inner_nest_indices_foragers:
             wasp = self.generateWasp(grid[row, 0], grid[row, 1])
+            # Let wasps in the outer nest be foragers
             wasp.role = WaspRole.FORAGER
             simulator.addAgent(wasp)
         return simulator
@@ -254,8 +264,9 @@ class instanceGenerator:
         :return: Newly created wasp agent.
         :rtype: Wasp
         """
+        # Randomly sample capacity for the wasp given configuration
         max_food = np.random.normal(self.mean_food_capacity, self.std_food_capacity, 1)[0]
-        print(max_food)
+        # Create wasp with sampled capacity, configuration information and name it by its position in the grid
         wasp = Wasp(
                 agent_id="W" + str(x) + str(y),
                 x=x,
@@ -289,54 +300,66 @@ class instanceGenerator:
         :rtype: Simulator
         """
         simulator = Simulator()
-
+        # Define number of cells given the configuration
         number_of_cells = np.random.randint(self.min_number_of_cells, self.max_number_of_cells + 1)
-        radius_nest = int(number_of_cells ** (1 / 2)) + 1
+        # Find the radius of the nest by the number of cells in the nest. Since the nest is a circle represented by a discrete grid,
+        # the radius is the square root of the number of cells divided by pi +1 for rounding purposes.  
+        radius_nest = int((number_of_cells/np.pi) ** (1 / 2)) + 1
+        # Divide the nest in inner and outer nest where each of them simply uses half of the nest radius
         radius_inner_nest = int(radius_nest * self.proportion_inner_larvae)
+        # Define the radius forage by the configuration forage distance by the radius nest
         radius_forage = radius_nest + self.forage_distance
-
+        # Build the grid, let a buffer be added as a safeguard for forager movement
         grid = self.generateGrid(radius_forage + self.forage_buffer)
+        # Pass the created grid to the simulator
         simulator.grid = grid
-
+        # Filter indices from the grid that are in the inner nest
         inner_nest_indices = np.where(in_circle(grid[:, 0], grid[:, 1], radius_inner_nest))[0]
+        # From the indices of the grid that belong inside the inner nest, randomly sample positions for the inner nest larvae
         inner_chosen_nest_indices_larvaes = np.random.choice(
             inner_nest_indices,
             int(self.nest_fill_percentage / 2 * inner_nest_indices.shape[0]),
             replace=False,
         )
-
+        # Filter indices from the grid that are in the outer nest and not in the inner nest
         nest_indices = np.where(
             in_circle(grid[:, 0], grid[:, 1], radius_nest)
             & outside_circle(grid[:, 0], grid[:, 1], radius_inner_nest)
         )[0]
+        # From the indices of the grid that belong to the outer nest, randomly sample positions for the outer nest larvae
         chosen_nest_indices_larvaes = np.random.choice(
             nest_indices, int(self.nest_fill_percentage / 2 * nest_indices.shape[0]), replace=False
         )
-
+        # Filter indices from the grid that are in the forage ring
         forage_indices = np.where(
             in_circle(grid[:, 0], grid[:, 1], radius_forage+radius_nest+ int(self.forage_buffer / 2) )
             & outside_circle(grid[:, 0], grid[:, 1], radius_nest + int(self.forage_buffer / 2))
         )[0]
+        # From the indices of the grid that belong to the forage ring, randomly sample positions for the forage
         chosen_forage_indices_forage = np.random.choice(
             forage_indices, int(self.forage_fill_percentage * forage_indices.shape[0]), replace=False
         )
-
+        # Define the total number of wasps proportional to the number of larvaes and the percentage of wasps to larvae defined in the configuration file
         total_wasps = int(
             (len(chosen_nest_indices_larvaes) + len(inner_chosen_nest_indices_larvaes)) * self.larvae_to_wasps_ratio
         )
+        # Set minimum number of foragers to 1 and let it be a percentage of the total number of wasps as per the configuration file
         total_foragers = max(1, int(total_wasps * self.percentage_foragers))
+        # Set all the wasps that are not foragers as feeders
         total_feeders = total_wasps - total_foragers
-
+        # Randomly choose the positions in which the feeders will be spawned from the inner nest
         chosen_nest_indices_feeders = np.random.choice(inner_nest_indices, total_feeders, replace=False)
+        # Randomly choose the positions in which the foragers will be spawned from the outer nest
         chosen_nest_indices_foragers = np.random.choice(nest_indices, total_foragers, replace=False)
+        # Add forage at the defined foraging locations to the simulator
         simulator = self.addForaging(chosen_forage_indices_forage, grid, simulator)
+        # Add the larvae and wasps to the simulator at the defined positions
         simulator = self.addLarvaes(chosen_nest_indices_larvaes, inner_chosen_nest_indices_larvaes, grid, simulator)
+        # Add the feeders and foragers to the simulator at the defined positions
         simulator = self.addWasps(
             chosen_nest_indices_feeders, chosen_nest_indices_foragers, grid, simulator
         )
         return simulator
-
-
 
 class Simulator:
     r"""
@@ -451,7 +474,7 @@ class Simulator:
 
     def accumulateGradients(self) -> None:
         """
-        Accumulate larvae-generated gradients into the role-specific fields.
+        Accumulate larvae-generated gradients into the role-specific fields. The gradient is a metric that accumulates the global density of hungry larvae.
 
         For each hungry larva, computes a Gaussian-like field centered on the larva
         and adds it to both feeder and forager gradient buffers. If gradient arrays
@@ -461,17 +484,21 @@ class Simulator:
         :rtype: None
         """
         agents = self.agents
+        # Collect all larvae
         larvae = [agent for agent in agents if agent.type == AgentType.LARVAE]
-
+        # Initiate the FEEDER ONLY gradients as a matrix of zeros.
         if len(self.gradients[WaspRole.FEEDER]) == 0:
             self.gradients[WaspRole.FEEDER] = np.zeros_like(self.grid[:, 0])
+        # Initiate the FORAGER ONLY gradients as a matrix of zeros.
         if len(self.gradients[WaspRole.FORAGER]) == 0:
             self.gradients[WaspRole.FORAGER] = np.zeros_like(self.grid[:, 0])
 
         for agent in larvae:
+            # Only accumulate gradients for hungry larvae
             if agent.hunger > agent.noHunger:
                 x0, y0 = agent.getPosition()
                 spread = agent.radius
+                # Weight the gaussian kernels by the hunger of the larvae
                 peak = max(agent.hunger / min(agent.food + 0.1, 0.1), 0.1)
                 gradient = gaussian_attraction(self.grid[:, 0], self.grid[:, 1], x0, y0, spread, peak)
 
@@ -553,6 +580,7 @@ class Simulator:
                     count_foragers += 1
             elif isinstance(agent, Larvae):
                 count_larvae += 1
+        # Count the agents by type and make sure there are enough of each for the simulation 
         return (count_feeders >= min_feeders) and (count_foragers >= min_foragers) and (count_larvae >= min_larvae)
 
     def createGrid(self, padding: int = 3) -> None:
@@ -567,6 +595,8 @@ class Simulator:
         :return: ``None``.
         :rtype: None
         """
+
+        # Create the grid obtaining the minimum and maximum position per coordinate over all the agents
         positions_dict = {"x": [agent.x for agent in self.agents], "y": [agent.y for agent in self.agents]}
         xmin = min(positions_dict["x"])
         xmax = max(positions_dict["x"])
@@ -578,7 +608,7 @@ class Simulator:
             np.arange(ymin - padding, ymax + padding + 1),
         )
         self.grid = np.concatenate((x.reshape(-1, 1), y.reshape(-1, 1)), axis=1)
-
+        # Initialize gradients by role
         for role in self.gradients:
             self.gradients[role] = np.zeros(self.grid.shape[0])
 
@@ -612,10 +642,14 @@ class Simulator:
         :return: ``True`` if all conditions hold, else ``False``.
         :rtype: bool
         """
+        # Verify number of agents by role
         num_agents_ok = self.verifyNumberAgents()
+        # If the simulator does not have a grid, create one
         if self.grid is None:
             self.createGrid()
+        # Verify the grid is valid
         grid_ok = self.verifyGrid()
+        # Verify there are forage points
         forage_ok = self.verifyForage()
         return num_agents_ok and grid_ok and forage_ok
 
@@ -635,6 +669,7 @@ class Simulator:
         :return: Report with keys ``movements``, ``feedLarvae``, ``hungerLarvae``, ``hungerWasp``.
         :rtype: Dict[str, Dict]
         """
+        # Only run the simulation if the simulator is properly set
         if not self.verifySimulationConditions():
             raise ValueError("Simulation conditions not met")
 
@@ -700,18 +735,22 @@ class Simulator:
                 nest_size=len(self.agents)
             )
             
+        # Run the simulation for the defined length of the simulation
         while i < t:
             if i % 10 == 0:
                 hungerCue = np.mean([ getattr(agent, "hungerCue", 0) for agent in self.agents if isinstance(agent, Wasp) ])
                 larvaeHunger = np.mean([ getattr(agent, "hunger", 0) for agent in self.agents if isinstance(agent, Larvae)])        
                 print(hungerCue,larvaeHunger,i)
+            # At each step accumulate the hunger of all the larvae and store it in the gradients.
             self.accumulateGradients()
-
+            # Accumulate the number of roles changed per step
             count_roles = 0
             j = 0
             while j < len(self.agents):
                 agent = self.agents[j]
                 if isinstance(agent, Wasp):
+                    # Step the chosen agent only if it is a wasp, larvae agents are passive. The step per agent
+                    # considers defining the next step, feeding and foraging
                     self.stepAgent(agent, wasps, larvaes_position)
                 j += 1
 
@@ -719,6 +758,7 @@ class Simulator:
             while j < len(self.agents):
                 agent = self.agents[j]
                 if isinstance(agent, Wasp):
+                    # With the previously stored next step per agent, move the agent
                     self.moveAgent(agent)
                     # Log agents AFTER they move (timestamp still current)
                     self.logger.log_agent(
@@ -740,12 +780,13 @@ class Simulator:
                         larvae_hunger_avg=self._calc_avg_hunger(AgentType.LARVAE),
                         total_food_in_nest=self._calc_total_food(),
                         rush_intensity=self._estimate_rush(),
-                        exploration_bias=0.0
+                       exploration_bias=0.0
                     )
-
+                # Update the agent hunger and food
                 self.updateAgent(agent)
                 if isinstance(agent, Wasp):
                     # Maintain correct ratio of feeders/foragers per step
+                    # Update if the hunger cues are either high or low
                     count_roles, total_foragers = self.updateRoles(
                         t, agent, count_roles, total_foragers, total_wasp
                     )
@@ -920,6 +961,7 @@ class Simulator:
         :return: ``None``.
         :rtype: None
         """
+        # Update hunger and food levels of the agents
         if agent.food < 1:
             agent.hunger += agent.hungerRate
         if agent.food - agent.hungerRate > 0:
@@ -940,13 +982,14 @@ class Simulator:
         :return: ``None``.
         :rtype: None
         """
+        # Only the agents that are within the nest will estimate the local hunger cue
         if agent.inOuterNest():
             local_hunger_cue = agent.estimateLocalHungerCue(self.gradients[agent.role], self.grid)
             agent.updateHungerCue(local_hunger_cue / self.gradients[agent.role].shape[0])
             
         position_foragers = [agent_.getPosition() for agent_ in wasps if agent_.role == WaspRole.FORAGER]
         position_wasp = [wasp.getPosition() for wasp in wasps if agent.id != wasp.id]
-
+        # Call the gradients function per agent role, different roles need different arguments to the feelGradient function
         if agent.role == WaspRole.FORAGER:
             agent.feelGradient(self.grid, self.gradients, self.forage, larvaePositions=np.array(larvaes_position))
             agent.step(t=self.currentTime, agents=self.agents, forage=self.forage)
@@ -975,8 +1018,9 @@ class Simulator:
         agent_next_positions = np.array(
             [[wasp.x + wasp.next_step["x"], wasp.y + wasp.next_step["y"]] for wasp in wasp_agents if wasp != agent]
         )
+        # Move the agent using the previously stored next_step dictionary and other agents information to prevent blocking behavior
         agent.move(agent_next_positions, self.grid)
-
+        # Store the current position of the agent for reporting purposes
         current_pos = agent.getPosition()
         if self.movementHistory[agent.id][-1] != current_pos:
             self.movementHistory[agent.id].append(current_pos)
@@ -1005,7 +1049,9 @@ class Simulator:
         :return: Updated ``(count_roles, total_foragers)``.
         :rtype: Tuple[int, int]
         """
+        # If it is time to change roles and we have not reached the maximum number of role changes let role changes happen 
         if t % self.role_changes_frequency == 0 and count_roles <= self.max_role_changes:
+            # If agent is a feeder and the hunger cues are high and there are not too many foragers let the feeder become a forager
             if (
                 agent.role == WaspRole.FEEDER
                 and agent.hungerCuesHigh()
@@ -1016,7 +1062,7 @@ class Simulator:
                     total_foragers += 1
                     agent.updateRolePersistence()
                     count_roles += 1
-
+            # If agent is a forager and the hunger cues are low and there are not too little foragers let the forager become a feeder
             if (
                 agent.role == WaspRole.FORAGER
                 and agent.hungerCuesLow()
@@ -1027,7 +1073,7 @@ class Simulator:
                     total_foragers -= 1
                     agent.updateRolePersistence()
                     count_roles += 1
-            
+        # Update role persistence of agent to allow role changes
         if agent.rolePersistence > 0:
             agent.rolePersistence -= 1
         return count_roles, total_foragers
@@ -1035,10 +1081,11 @@ class Simulator:
     def clearGradients(self) -> None:
         """
         Reset gradient accumulators to zero arrays matching the grid size.
-
+        This is realized at each step of the simulation because the hunger levels of the larvae are updated at each step of the simulation.
         :return: ``None``.
         :rtype: None
         """
+        
         if self.grid is None:
             return
         for role in self.gradients:

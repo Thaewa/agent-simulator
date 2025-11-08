@@ -1,53 +1,53 @@
 instance_generator:
-  larvae_to_wasps_ratio: 0.3
-  percentage_foragers:  0.1
-  min_number_of_cells: 100
-  max_number_of_cells: 120
-  nest_fill_percentage: 0.3
-  forage_fill_percentage: 0.1
-  larvae_hunger_multiplier: 3.0
-  mean_food_capacity: 10.0
-  std_food_capacity: 3.0
-  forage_distance: 5
-  hunger_rate: 0.2
-  proportion_inner_larvae: 0.5
-  grid_buffer:  1
-  forage_buffer: 10
+  larvae_to_wasps_ratio: 0.2 # Ratio of wasps to generate relative to the number of larvae.
+  percentage_foragers:  0.1 # The fraction of the total wasp population that will be initialized with the 'FORAGER' role.
+  min_number_of_cells: 200 # Minimum number of cells to determine the nest size.
+  max_number_of_cells: 200 # Maximum number of cells to determine the nest size.
+  nest_fill_percentage: 0.7 # Fraction of available nest cells to populate with larvae.
+  forage_fill_percentage: 0.1 # Fraction of available forage ring cells to activate as forage sites.
+  larvae_hunger_multiplier: 3.0 # Multiplier for hunger rate of inner-nest larvae.
+  mean_food_capacity: 10.0 # Mean of the normal distribution used for wasp max food capacity sampling.
+  std_food_capacity: 3.0 # Standard deviation of the normal distribution for wasp max food capacity sampling.
+  forage_distance: 5 # Radial distance between the nest radius and the start of the forage ring.
+  hunger_rate: 0.2 # Base per-step hunger rate assigned to generated agents.
+  proportion_inner_larvae: 0.5 # Fraction of the nest radius that defines the inner-nest radius.
+  grid_buffer:  1 # Buffer added to the grid boundaries to ensure agents can move freely.
+  forage_buffer: 10 # Buffer added to the forage ring radius.
 
 wasp:
-  path_finding: "greedy"
-  hunger: 1
-  food: 1
-  outer_nest_radius: 10
-  hunger_rate: 0.01
-  smell_radius: 2
-  smell_intensity: 5.0
-  chance_of_feeding: 0.8
-  forage_increase: 10
-  chance_of_foraging: 0.8
-  food_transfer_to_wasp: 2
-  food_transfer_to_larvae: 1
-  smell_repulsion: 2
-  repulsion_radius: 1
-  role_persistence: 50
-  hunger_cue_decay: 0.9
-  unload_only_chance: 0.8
-  hunger_cues_low_threshold: 0.25
-  hunger_cues_high_threshold: 0.55
-  max_step_trials: 10
-  smell_radius_buffer: 2
-  feeder_to_forager_probability: 0.8
-  forager_to_feeder_probability: 0.2
+  path_finding: "greedy" # Default path-finding strategy for wasps (can be overridden by CLI).
+  hunger: 1 # Initial hunger level for newly created wasps.
+  food: 1 # Initial amount of stored food for newly created wasps.
+  outer_nest_radius: 10 # Radius threshold used for nest-related constraints for wasps.
+  hunger_rate: 0.1 # Per-step hunger increase rate for wasps.
+  smell_radius: 2 # Radius of olfactory perception for wasps (in grid units).
+  smell_intensity: 5.0 # Intensity scaling of olfactory perception for wasps.
+  chance_of_feeding: 0.8 # Probability of a wasp feeding a nearby agent if conditions are met.
+  forage_increase: 10 # Amount of food gained when a foraging attempt succeeds.
+  chance_of_foraging: 0.8 # Probability of a wasp foraging when at a foraging site.
+  food_transfer_to_wasp: 2 # Amount of food transferred from one wasp to another.
+  food_transfer_to_larvae: 1 # Amount of food transferred from a wasp to a larva.
+  smell_repulsion: 2 # Repulsion strength/radius parameter for wasp-to-wasp spacing.
+  repulsion_radius: 1 # Spread parameter for the repulsion gradient between wasps.
+  role_persistence: 50 # Number of simulation steps a wasp must wait before its role can be reassessed.
+  hunger_cue_decay: 0.9 # Multiplicative decay factor applied to a wasp's internal hunger cue each step.
+  unload_only_chance: 0.8 # Probability of a forager unloading food to larvae when hunger cues are high.
+  hunger_cues_low_threshold: 0.25 # Lower threshold factor for determining "low" hunger cues for role switching.
+  hunger_cues_high_threshold: 0.55 # Upper threshold factor for determining "high" hunger cues for role switching.
+  max_step_trials: 10 # Maximum number of attempts for a wasp to find a valid (unoccupied) next step.
+  smell_radius_buffer: 2 # Additional radius buffer used in shortest-path detection to find nearby larvae.
+  feeder_to_forager_probability: 0.8 # Probability of a feeder becoming a forager if hunger cues are high.
+  forager_to_feeder_probability: 0.2 # Probability of a forager becoming a feeder if hunger cues are low.
 
 larvae:
-  hunger_rate: 0.2
-  hunger_rate_multiplier: 2.0
+  hunger_rate: 0.3 # Base per-step hunger increase rate for larvae.
+  hunger_rate_multiplier: 2.0 # Multiplier applied to the hunger rate for some larvae to create variation.
   
 simulator:
-  grid_buffer: 1
-  forage_buffer: 10
+  grid_buffer: 1 # (DEPRECATED) Buffer for grid generation, prefer instance_generator.grid_buffer.
+  forage_buffer: 10 # (DEPRECATED) Buffer for forage generation, prefer instance_generator.forage_buffer.
 
 simulation:
-  num_runs: 2
-  run_mode: per_round   # or per_algorithm
-  pathfinding_mode: TSP
+  num_runs: 1 # Number of simulation runs to perform (used by external scripts).
+  run_mode: per_round   # Defines how batch runs are executed (e.g., 'per_round' or 'per_algorithm').
+  pathfinding_mode: TSP # Default pathfinding mode for the simulation (overridden by CLI).
