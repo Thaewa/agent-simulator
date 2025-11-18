@@ -13,12 +13,11 @@ class DataLogger:
     while the aggregate log persists and keeps appending results.
     """
 
-    def __init__(self, pathfinding_mode="unknown", simulation_id=None, reset_logs=True):
+    def __init__(self, pathfinding_mode="unknown", simulation_id=None, reset_logs=True,sensitivity=False):
         self.pathfinding_mode = pathfinding_mode.lower()
-
         # --- paths ---
         root_dir = os.path.dirname(os.path.abspath(__file__))
-        base_dir = os.path.join(root_dir, "output_logs", self.pathfinding_mode)
+        base_dir = os.path.join(root_dir, "output_logs" if not sensitivity else "output_logs_sensitivity", self.pathfinding_mode)
         os.makedirs(base_dir, exist_ok=True)
 
         self.agent_log_path     = os.path.join(base_dir, f"agent_log_{self.pathfinding_mode}.csv")

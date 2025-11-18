@@ -1,6 +1,6 @@
 instance_generator:
   larvae_to_wasps_ratio: 0.2 # Ratio of wasps to generate relative to the number of larvae.
-  percentage_foragers:  0.1 # The fraction of the total wasp population that will be initialized with the 'FORAGER' role.
+  percentage_foragers:  0.01 # The fraction of the total wasp population that will be initialized with the 'FORAGER' role.
   min_number_of_cells: 200 # Minimum number of cells to determine the nest size.
   max_number_of_cells: 200 # Maximum number of cells to determine the nest size.
   nest_fill_percentage: 0.7 # Fraction of available nest cells to populate with larvae.
@@ -51,3 +51,7 @@ simulation:
   num_runs: 1 # Number of simulation runs to perform (used by external scripts).
   run_mode: per_round   # Defines how batch runs are executed (e.g., 'per_round' or 'per_algorithm').
   pathfinding_mode: TSP # Default pathfinding mode for the simulation (overridden by CLI).
+  potential_feeder_to_forager: 0.1 # Maximum percentage of feeders that can become foragers.
+  forager_ratio: 0.02 # Ratio of forager wasps to total wasps.
+
+sensitivity: false

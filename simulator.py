@@ -285,6 +285,11 @@ class instanceGenerator:
     # High-level instance maker
     # -------------------------
 
+    def updateSimulator(self,simulator):
+        simulator.potential_feeder_to_forager = self.simulator_dictionary["potential_feeder_to_forager"]
+        simulator.forager_ratio = self.simulator_dictionary["forager_ratio"]
+        return simulator
+
     def generateSimulator(self) -> "Simulator":
         """
         Create and populate a :class:`Simulator` with grid, larvae, wasps, and forage.
@@ -300,6 +305,8 @@ class instanceGenerator:
         :rtype: Simulator
         """
         simulator = Simulator()
+        simulator = self.updateSimulator(simulator)
+
         # Define number of cells given the configuration
         number_of_cells = np.random.randint(self.min_number_of_cells, self.max_number_of_cells + 1)
         # Find the radius of the nest by the number of cells in the nest. Since the nest is a circle represented by a discrete grid,
