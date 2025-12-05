@@ -35,11 +35,13 @@ class WaspRole(Enum):
 
     .. attribute:: FEEDER
 
-       Wasp responsible for feeding larvae.
+       Wasp responsible for feeding larvae. A feeder is a wasp that stays within the nest, it can receive and transfer
+         food to other wasps and to larvae. 
 
     .. attribute:: FORAGER
 
-       Wasp responsible for collecting food.
+       Wasp responsible for collecting food. The forager is a wasp that can move outside the nest, collect food,
+       and transfer it to either wasps or larvae. 
     """
     FEEDER = "Feeder"
     FORAGER = "Forager"
@@ -200,10 +202,6 @@ class Wasp(Agent):
     :type food_transfer_to_wasp: int
     :param food_transfer_to_larvae: Amount of food transferred from a wasp to a larva when the wasp is not hungry and encounters the larva.
     :type food_transfer_to_larvae: int
-    :param smell_repulsion: Amount of grid units to repel from a foraging site when a wasp encounters one.
-    :type smell_repulsion: int
-    :param repulsion_radius: Radius of repulsion from a foraging site.
-    :type repulsion_radius: int
     :param role_persistence: Number of simulation steps before reassessing the role of a wasp.
     :type role_persistence: int
     :param hunger_cue_decay: Rate of decay of hunger cues from a foraging site.
@@ -253,10 +251,6 @@ class Wasp(Agent):
     :vartype outerNestRadius: int
     :ivar hunger_rate: Per-step hunger increase rate (duplicate of constructor arg for convenience).
     :vartype hunger_rate: float
-    :ivar smellrepulsion: Repulsion strength/radius parameter for wasp-to-wasp spacing.
-    :vartype smellrepulsion: int
-    :ivar repulsionRadius: Spread parameter for repulsion gradient.
-    :vartype repulsionRadius: int
     :ivar rolePersistence: Internal counter controlling how long a role is maintained.
     :vartype rolePersistence: int
     :ivar hungerCueDecay: Multiplicative decay applied to the internal ``hungerCue`` each step.
@@ -288,13 +282,13 @@ class Wasp(Agent):
     def __init__(
         self,
         agent_id: str,
+        outer_nest_radius: int,
         x: int = 0,
         y: int = 0,
         path_finding: str = "greedy",
         hunger: int = 0,
         food: int = 0,
         max_food: int = 10,
-        outer_nest_radius: int = 10,
         hunger_rate: float = 0.01,
         smell_radius: int = 2,
         smell_intensity: float = 5.0,
@@ -303,8 +297,6 @@ class Wasp(Agent):
         chance_of_foraging: float = 0.8,
         food_transfer_to_wasp: int = 1,
         food_transfer_to_larvae: int = 1,
-        smell_repulsion: int = 2,
-        repulsion_radius: int = 1,
         role_persistence: int = 50,
         hunger_cue_decay: float = 0.9,
         unload_only_chance: float = 0.8,
@@ -329,9 +321,7 @@ class Wasp(Agent):
         self.minHungerCue = None
         self.maxHungerCue = None
         self.outerNestRadius = outer_nest_radius
-        self.hunger_rate = hunger_rate
-        self.smellrepulsion = smell_repulsion
-        self.repulsionRadius = repulsion_radius
+        self.hungerRate = hunger_rate
         self.rolePersistence = role_persistence
         self.hungerCueDecay = hunger_cue_decay
         self.prevStep = self.getPosition()
@@ -341,7 +331,7 @@ class Wasp(Agent):
         self.hungerCuesLowThreshold = hunger_cues_low_threshold
         self.hungerCuesHighThreshold = hunger_cues_high_threshold
         self.maxStepTrials = max_step_trials
-        self.oneStepList = [-1, 0, 1]
+        self.oneStepList = [-0.5, 0, 0.5]
         self.smellRadiusBuffer = smell_radius_buffer
         self.feeder_to_forager_probability = feeder_to_forager_probability
         self.forager_to_feeder_probability = forager_to_feeder_probability
@@ -351,7 +341,7 @@ class Wasp(Agent):
         self.feed_count_wasp = 0 # <---- Newly added
         self.hunger_cue = 0.0 # <---- # stores latest hunger cue sensed
         self.step_count = 0  # <---- New field
-
+        
     def updateRolePersistence(self) -> None:
         """
         Update the role persistence by adding ``rolePersistenceUpdate``.
@@ -734,30 +724,6 @@ class Wasp(Agent):
             feltGradient = self.updateFeltGradient(grid, x0, y0, feltGradient)
         return feltGradient
 
-    def addRepulsionGradient(self, feltGradient: np.ndarray, waspPositions: np.ndarray, grid: np.ndarray) -> np.ndarray:
-        """
-        Add a repulsive component to the felt gradient around nearby wasps.
-        Add repulsion from other fellow feeder wasps. This ensures that the wasps are not too close. 
-        This mechanism works in conjunction with the attraction to foragers.
-        :param feltGradient: Current felt gradient.
-        :type feltGradient: numpy.ndarray
-        :param waspPositions: ``(K, 2)`` array of wasp positions.
-        :type waspPositions: numpy.ndarray
-        :param grid: Grid positions as an ``(N, 2)`` array.
-        :type grid: numpy.ndarray
-        :return: Updated felt gradient with repulsion applied.
-        :rtype: numpy.ndarray
-        """
-        wasp_index = np.where(
-            (((waspPositions[:, 0] - self.x) ** 2 + (waspPositions[:, 1] - self.y) ** 2) <= self.smellrepulsion)
-        )[0]
-        for index in wasp_index:
-            x0, y0 = waspPositions[index]
-            gradient = gaussian_attraction(
-                grid[:, 0], grid[:, 1], x0, y0, self.smellRadius, self.repulsionRadius
-            )
-            feltGradient = feltGradient - gradient
-        return feltGradient
 
     def greedy_path_finding(
         self,
@@ -771,8 +737,7 @@ class Wasp(Agent):
         Greedy path-finding that follows the (possibly modified) gradient field.
 
         Depending on the role and food level, the felt gradient may incorporate
-        foraging points (for foragers) or forager positions (for feeders) and
-        repulsion from other wasps.
+        foraging points (for foragers) or forager positions (for feeders) 
 
         :param grid: Grid positions as an ``(N, 2)`` array.
         :type grid: numpy.ndarray
@@ -804,8 +769,7 @@ class Wasp(Agent):
             # If the feeder has food, let it be attracted to local hungry larvae and repel other wasps
             else:
                 feltGradient = gradientField[self.role]
-                feltGradient = self.addRepulsionGradient(feltGradient, waspPositions, grid)
-
+                
         # Use discrte differences to estimate the gradient
         dZdx, dZdy = estimate_gradient(grid, feltGradient)
         dZ = np.column_stack((dZdx, dZdy))
@@ -815,7 +779,8 @@ class Wasp(Agent):
             # fallback to nearest grid cell (safeguard)
             idx = [np.argmin(np.sum((grid - np.array([self.x, self.y]))**2, axis=1))]
         # take the sign of the gradient to achieve +1 or -1 movement in each axis.
-        sign_displacement = np.sign(dZ[idx])
+        sign_displacement = np.sign(dZ[idx])/2
+        
         # update the next step
         self.next_step[list(self.next_step.keys())[0]] += sign_displacement[0, 0].item()
         self.next_step[list(self.next_step.keys())[1]] += sign_displacement[0, 1].item()
@@ -971,7 +936,7 @@ class Wasp(Agent):
         :type forage: List[tuple[float, float]] | None
         :param foragersPositions: Optional ``(M, 2)`` array of forager positions.
         :type foragersPositions: numpy.ndarray | None
-        :param waspPositions: Optional ``(K, 2)`` array of wasp positions (used for repulsion).
+        :param waspPositions: Optional ``(K, 2)`` array of wasp positions.
         :type waspPositions: numpy.ndarray | None
         :param larvaePositions: Optional ``(L, 2)`` array of larvae positions (used for shortest/TSP strategies).
         :type larvaePositions: numpy.ndarray | None
@@ -984,7 +949,7 @@ class Wasp(Agent):
         self.greedy_path_finding(grid, gradientField, forage, foragersPositions, waspPositions)
         
         #Only feeders use other path-finding strategies
-        if self.role == WaspRole.FEEDER:
+        if self.role == WaspRole.FEEDER and self.food>1:
             # If strategy contains random walk, use such strategy
             if "random_walk" in self.path_finding:
                 self.random_walk_path_finding()
@@ -1012,11 +977,11 @@ class Wasp(Agent):
         :rtype: numpy.ndarray
         """
         entities = np.abs(entities - np.array([self.x, self.y]))
-        masks = (entities <= 2).all(axis=1)
+        masks = (entities <= 0.5).all(axis=1)
         idx = np.flatnonzero(masks)
         return idx
 
-    def feedNearby(self, agents: List[Agent]) -> None:
+    def feedNearby(self, agents: List[Agent],t) -> None:
         """
         Attempt to feed nearby agents according to ``chanceOfFeeding`` and their hunger.
 
@@ -1032,12 +997,16 @@ class Wasp(Agent):
         agents_position = np.array([agent.getPosition() for agent in agents])
         # Filter agents by distance and keep those that are nearby
         idx = self.nearbyEntity(agents_position)
+        feeding_bouts = []
         if idx.shape[0] > 0:
             for id in idx:
                 # If the wasp is not full and a random draw is less than the chance of foraging realize the feed
-                if random.random() > self.chanceOfFeeding and agents[id].hunger > 1:
+                if random.random() > self.chanceOfFeeding and agents[id].hunger > 1.2 and self.food>1:
                     self.feed(agents[id])
-
+                    if self.role == WaspRole.FORAGER:
+                        bout = FeedingBout(self, agents[id],t)
+                        feeding_bouts.append(bout)
+        return feeding_bouts
     def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> None:
         """
         Advance the wasp's state by one simulation step.
@@ -1065,19 +1034,21 @@ class Wasp(Agent):
             if self.role == WaspRole.FORAGER:
                 # If agent is a forager and hunger cues are high only feed feeders
                 if self.hungerCuesHigh():
-                    self.feedNearby(wasps_feeders)
+                    feed_events = self.feedNearby(wasps_feeders,t)
                 # If agent is a forager and hunger cues are not high feed feeders and larvae
                 else:
-                    self.feedNearby(net_receivers)
+                    feed_events = self.feedNearby(net_receivers,t)
             # If agent is a feeder feeders and larvae
             elif self.role == WaspRole.FEEDER:
-                self.feedNearby(net_receivers)
+                feed_events = self.feedNearby(net_receivers,t)
+        else:
+            feed_events = []
         # If agent has no food and is a forager, forage
         if self.role == WaspRole.FORAGER and forage is not None and self.food < self.maxFood:
             self.forage(forage)
         # Update local hunger cue with a decay, the decay can be updated in the configuration file
         self.hungerCue = self.hungerCue * self.hungerCueDecay
-        
+        return feed_events
 # ---------------------------
 # Subclass: Larvae
 # ---------------------------
@@ -1158,3 +1129,10 @@ class Larvae(Agent):
         :rtype: None
         """
         self.storedEvents.append(f"{self.id} asked for food at time {t}")
+
+class FeedingBout():
+    def __init__(self,feeder,receiver,t):
+        self.feeder = feeder
+        self.receiver = receiver
+        self.timestamp = t
+        

@@ -15,11 +15,10 @@ def parse_args():
                         help="Unique simulation ID for batch runs")
     parser.add_argument("--append-logs", action="store_true")
     parser.add_argument("--smell-radius", type=int, default=None, help= "Smell radius of wasp")
-    parser.add_argument("--smell-intensity", type=int, default=None, help= "Smell intensity of wasp")
-    parser.add_argument("--potential-feeder-to-forager", type=float, default=None, help= "Probability of a feeder wasp changing to a forager wasp")
     parser.add_argument("--forager-ratio", type=float, default=None, help= "Ratio of forager wasps to total wasps")
+    parser.add_argument("--nest_fill_percentage", type=float, default=None, help= "Percentage of nest filled with larvae")
+    parser.add_argument("--number_of_cells", type=int, default=None, help= "Number of cells in nest")
     parser.add_argument("--sensitivity", type=str, default='False', help= "Defines address of log files")
-
     return parser.parse_args()
 
 def main():
@@ -33,28 +32,26 @@ def main():
 
     with open(config_path, "r") as f:
         args = yaml.safe_load(f)
-
+        
     # Override mode from CLI
     args["simulator"]["pathfinding_mode"] = cli_args.mode
     
     if cli_args.smell_radius is not None:
         args["wasp"]["smell_radius"] = cli_args.smell_radius
-    if cli_args.smell_intensity is not None:
-        args["wasp"]["smell_intensity"] = cli_args.smell_intensity
-    if cli_args.potential_feeder_to_forager is not None:
-        args["simulator"]["potential_feeder_to_forager"] = cli_args.potential_feeder_to_forager
     if cli_args.forager_ratio is not None:
         args["simulator"]["forager_ratio"] = cli_args.forager_ratio
+    if cli_args.number_of_cells is not None:
+        args["instance_generator"]["number_of_cells"] = cli_args.number_of_cells
+    if cli_args.nest_fill_percentage is not None:
+        args["instance_generator"]["nest_fill_percentage"] = cli_args.nest_fill_percentage
     if cli_args.sensitivity != 'False':
         args["sensitivity"] = cli_args.sensitivity
-
 
     # Generate simulator  
     generator = instanceGenerator(**args['instance_generator'])
     generator.waspDictionary(args['wasp'])
     generator.larvaeDictionary(args['larvae'])
     generator.simulatorDictionary(args['simulator'])
-    
     simulator = generator.generateSimulator()
 
     # Attach config to simulator (so simulator.py can log it safely)
@@ -68,7 +65,7 @@ def main():
     )
 
     # # Run simulation for T steps
-    T = 1000
+    T = 500
     report = simulator.runSimulation(T)
     
     # Print results
