@@ -14,6 +14,11 @@ def parse_args():
     parser.add_argument("--sim-id", type=str, default=None,
                         help="Unique simulation ID for batch runs")
     parser.add_argument("--append-logs", action="store_true")
+    parser.add_argument("--smell-radius", type=int, default=None, help= "Smell radius of wasp")
+    parser.add_argument("--forager-ratio", type=float, default=None, help= "Ratio of forager wasps to total wasps")
+    parser.add_argument("--nest_fill_percentage", type=float, default=None, help= "Percentage of nest filled with larvae")
+    parser.add_argument("--number_of_cells", type=int, default=None, help= "Number of cells in nest")
+    parser.add_argument("--sensitivity", type=str, default='False', help= "Defines address of log files")
     return parser.parse_args()
 
 def main():
@@ -27,30 +32,40 @@ def main():
 
     with open(config_path, "r") as f:
         args = yaml.safe_load(f)
-
+        
     # Override mode from CLI
     args["simulator"]["pathfinding_mode"] = cli_args.mode
+    
+    if cli_args.smell_radius is not None:
+        args["wasp"]["smell_radius"] = cli_args.smell_radius
+    if cli_args.forager_ratio is not None:
+        args["simulator"]["forager_ratio"] = cli_args.forager_ratio
+    if cli_args.number_of_cells is not None:
+        args["instance_generator"]["number_of_cells"] = cli_args.number_of_cells
+    if cli_args.nest_fill_percentage is not None:
+        args["instance_generator"]["nest_fill_percentage"] = cli_args.nest_fill_percentage
+    if cli_args.sensitivity != 'False':
+        args["sensitivity"] = cli_args.sensitivity
 
     # Generate simulator  
     generator = instanceGenerator(**args['instance_generator'])
     generator.waspDictionary(args['wasp'])
     generator.larvaeDictionary(args['larvae'])
     generator.simulatorDictionary(args['simulator'])
-    
     simulator = generator.generateSimulator()
 
     # Attach config to simulator (so simulator.py can log it safely)
     simulator.config = args
-
     #  Replace simulator.logger (the old one created in Simulator.__init__)
     simulator.logger = DataLogger(
         pathfinding_mode=cli_args.mode,
         simulation_id=cli_args.sim_id,
-        reset_logs=not cli_args.append_logs
+        reset_logs=not cli_args.append_logs,
+        sensitivity=bool(args['sensitivity'])
     )
 
     # # Run simulation for T steps
-    T = 1000
+    T = 500
     report = simulator.runSimulation(T)
     
     # Print results

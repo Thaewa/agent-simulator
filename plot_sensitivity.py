@@ -16,14 +16,15 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+import seaborn as sns
 
 # ==============================================================
 # SETUP
 # ==============================================================
 
 BASE = Path(".")
-LOGS = BASE / "output_logs"
-OUT = BASE / "output_plots_v3_1"
+LOGS = BASE / "output_logs_sensitivity"
+OUT = BASE / "output_plots_sensitivity"
 OUT.mkdir(parents=True, exist_ok=True)
 
 COLORS = {
@@ -580,6 +581,184 @@ def plot_wasp_trajectory():
         plt.savefig(OUT / f"9_wasp_trajectory_{mode}.png", dpi=150, bbox_inches="tight")
         plt.close()
 
+
+def get_filenames_in_directory(directory):
+    return [f.name for f in os.scandir(directory) if f.is_file()]
+
+def add_sensitivity_labels(df):
+    
+    smell_radius = [1,2,3]
+    smell_intensity = [1,3,5]
+    potential_feeder_to_forager = [0.05,0.15,0.25]
+    forager_ratio = [0.02,0.06,0.1]
+    counter = 0
+    df['smell_radius']=''
+    df['smell_intensity']=''
+    df['potential_feeder_to_forager']=''
+    df['forager_ratio']=''
+
+    for i in smell_radius:
+        for j in smell_intensity:
+            for k in potential_feeder_to_forager:
+                for l in forager_ratio:
+                    counter += 1
+                    df.loc[df['simulation_id']==counter,'smell_radius'] = str(i)
+                    df.loc[df['simulation_id']==counter,'smell_intensity'] = str(j)
+                    df.loc[df['simulation_id']==counter,'potential_feeder_to_forager'] = str(k)
+                    df.loc[df['simulation_id']==counter,'forager_ratio'] = str(l)
+
+    return df
+# -------------------------------
+def aggregate_over_larvae(df):
+    return df.groupby(['timestamp','smell_radius','potential_feeder_to_forager','forager_ratio','smell_intensity'], as_index=False).agg(
+        mean_hunger=("hunger_level", "mean"),
+        max_hunger=("hunger_level", "max"),
+        min_hunger=("hunger_level", "min"),
+        ).reset_index()
+
+def aggregate_over_larvae_distance(df):
+    bins = np.arange( df['distance_to_nest'].min() , df['distance_to_nest'].max() + 1.5, 1.5)
+    tsb = pd.cut(
+        df['distance_to_nest'],
+        bins=bins,
+        right=False,            # use right=True if you truly want (a, b]
+        include_lowest=True
+    )
+    df = df.assign(distance_to_nest_bins=tsb)
+    
+    groupers = [
+        'distance_to_nest_bins',
+        'potential_feeder_to_forager',
+        'forager_ratio',
+        'smell_intensity',
+        'smell_radius'
+    ]
+
+    # If you want to ignore any rows with NA in the grouping keys, do it explicitly:
+    df = df.dropna(subset=groupers)
+
+    return df.groupby(['distance_to_nest_bins','smell_radius','potential_feeder_to_forager','forager_ratio','smell_intensity'],\
+                       observed=True, sort=False, as_index=False).agg(
+        mean_hunger=("hunger_level", "mean"),
+        max_hunger=("hunger_level", "max"),
+        min_hunger=("hunger_level", "min"),
+        mean_food = ("food_received", "mean"),
+        ).reset_index()
+
+def aggregate_over_agent_roles(df):
+    df = pd.crosstab(index=[df['timestamp'],df['smell_radius'],df['potential_feeder_to_forager'],df['forager_ratio'],df['smell_intensity']],columns=df['agent_role']).reset_index()
+    df = df.melt(
+    id_vars=['timestamp', 'smell_radius', 'smell_intensity', 'potential_feeder_to_forager', 'forager_ratio'],
+    value_vars=['FEEDER', 'FORAGER'],
+    var_name='role',
+    value_name='count'
+    )
+    return df
+
+def plot_recruitment_over_time(filenames):
+    file = [f for f in filenames if "agent" in f]
+    if file:
+        df = load_csvs("output_logs_sensitivity\greedy/" + file[0])
+        df = df.loc[df['agent_role']!='Larvae']
+        df = add_sensitivity_labels(df)
+        df = aggregate_over_agent_roles(df)
+        sns.lineplot(data=df, x='timestamp', y ='count',hue='role', style='potential_feeder_to_forager',palette="Set2")
+        plt.show()
+def plot_hunger_cue_over_time(filenames):
+    file = [f for f in filenames if "larvae" in f]
+    if file:
+        df = load_csvs("output_logs_sensitivity\greedy/" + file[0])
+        df = add_sensitivity_labels(df)
+        df = aggregate_over_larvae(df)
+        sns.lineplot(data=df, x='timestamp', y ='mean_hunger',hue='smell_radius', style='potential_feeder_to_forager',palette="Set2")
+def count_bouts(df):
+    simulation_ids = df['simulation_id'].unique()
+    role_agents = df['agent_id'].unique()
+    df['bout']=0
+    df['timestamp_gap']=0
+    df['num_timestamp']=0
+    dfs = []
+    for simulation_id in simulation_ids:
+        for role_agent in role_agents:
+            sub_df = df.loc[df['agent_id']==role_agent]
+            sub_df = sub_df.loc[sub_df['simulation_id']==simulation_id]
+            sub_df['num_timestamp']=pd.to_numeric(sub_df['timestamp'], errors='coerce')
+            sub_df['timestamp_gap']=sub_df['num_timestamp'].diff().fillna(0)
+            sub_df['bout'] = np.where(sub_df['timestamp_gap'] > 1, 1, 0)
+            dfs.append(sub_df)
+    return pd.concat(dfs, ignore_index=True)
+
+def aggregate_over_bouts(df):
+    bins = np.arange( df['timestamp'].min() , df['timestamp'].max() + 15, 15)
+    tsb = pd.cut(
+        df['timestamp'],
+        bins=bins,
+        right=False,            # use right=True if you truly want (a, b]
+        include_lowest=True
+    )
+    df = df.assign(timestamp_bins=tsb)
+
+    groupers = [
+        'timestamp_bins',
+        'potential_feeder_to_forager',
+        'forager_ratio',
+        'smell_intensity',
+        'smell_radius'
+    ]
+
+    # If you want to ignore any rows with NA in the grouping keys, do it explicitly:
+    df = df.dropna(subset=groupers)
+
+    # observed=True prevents building the full cartesian product of categorical levels
+    out = (
+        df.groupby(groupers, as_index=False, observed=True, sort=False)
+          .agg(total_bouts=('bout', 'sum'))
+    )
+    return out
+
+def plot_number_of_feeding_bouts(filenames):
+    file = [f for f in filenames if "agent" in f]
+    if file:
+        df = load_csvs("output_logs_sensitivity\greedy/" + file[0])
+        df = df.loc[df['agent_role']=='FORAGER']
+        df = df.loc[(df['position_x']**2 + df['position_y']**2) <= (8**2)]
+        df = df.loc[df['food_stored']>1]
+        df = count_bouts(df)
+        df = add_sensitivity_labels(df)
+        df = df.loc[(df['timestamp'] > 300) & (df['timestamp'] < 600)]
+        df = aggregate_over_bouts(df)
+        df = df.loc[df['potential_feeder_to_forager']=='0.25']
+        df = df.loc[df['forager_ratio']=='0.1']
+        sns.boxplot(data=df, x='timestamp_bins', y ='total_bouts',hue='smell_intensity',palette="Set2")
+        
+def plot_nest_hunger_over_distance(filenames):
+    file = [f for f in filenames if "larvae" in f]
+    if file:
+        df = load_csvs("output_logs_sensitivity\greedy/" + file[0])
+        df = add_sensitivity_labels(df)
+        df = aggregate_over_larvae_distance(df)
+        df = df.loc[df['potential_feeder_to_forager']=='0.25']
+        sns.boxplot(data=df, x='distance_to_nest_bins', y ='mean_hunger',hue='smell_radius',palette="Set2")
+        plt.show()
+
+def plot_nest_feeding_frequency_over_distance(filenames):
+    file = [f for f in filenames if "larvae" in f]
+    if file:
+        fig, ax = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
+        df = load_csvs("output_logs_sensitivity\greedy/" + file[0])
+        df = add_sensitivity_labels(df)
+        df = aggregate_over_larvae_distance(df)
+        sns.boxplot(data=df.loc[df['potential_feeder_to_forager']=='0.25'], x='distance_to_nest_bins', y ='mean_food',hue='smell_radius',palette="Set2",ax=ax[0],legend=False)
+        sns.boxplot(data=df.loc[df['potential_feeder_to_forager']=='0.15'], x='distance_to_nest_bins', y ='mean_food',hue='smell_radius',palette="Set2",ax=ax[1],legend=False)
+        sns.boxplot(data=df.loc[df['potential_feeder_to_forager']=='0.05'], x='distance_to_nest_bins', y ='mean_food',hue='smell_radius',palette="Set2",ax=ax[2])
+        ax[0].grid(True)
+        ax[0].set_yticks(np.arange(df['mean_food'].min(), df['mean_food'].max() + 0.01, 0.2))
+        ax[0].legend(title=None  )
+        ax[1].grid(True)
+        ax[1].set_yticks(np.arange(df['mean_food'].min(), df['mean_food'].max() + 0.01, 0.2))
+        ax[2].grid(True)
+        ax[2].set_yticks(np.arange(df['mean_food'].min(), df['mean_food'].max() + 0.01, 0.2))
+
 # ==============================================================
 # MAIN
 # ==============================================================
@@ -587,20 +766,13 @@ def plot_wasp_trajectory():
 def main():
     
     print(f"[INFO] Saving charts into: {OUT.resolve()}")
-    plot_larvae_hunger_over_time()
-    plot_larvae_distance_vs_hunger()
-    plot_wasp_hunger_cue_over_time()
-    plot_foragers_vs_hunger_cue()
-    plot_hunger_multi_pathfinding()
-    plot_foraging_efficiency()
-    plot_total_distance_vs_feed()   # <---- 7c
-    plot_total_distance_vs_feed_avg()  # 7c1
-    plot_walk_to_feed_efficiency()  # <---- 7d
-    plot_walk_to_feed_efficiency_avg() # 7d1
-    plot_total_steps_vs_feed()      # <---- 7e
-    plot_total_steps_vs_feed_avg()     # 7e1
-    plot_foraging_frequency()
-    plot_wasp_trajectory()
+    filenames = get_filenames_in_directory("output_logs_sensitivity\greedy")
+    # plot_hunger_cue_over_time(filenames)
+    # plot_recruitment_over_time(filenames)
+    # plot_number_of_feeding_bouts(filenames)
+    # plot_nest_hunger_over_distance(filenames)
+    # plot_nest_feeding_frequency_over_distance(filenames)
+
     print("[INFO] Done. All charts ready for Capstone visualization showcase.")
 
 if __name__ == "__main__":

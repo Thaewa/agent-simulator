@@ -25,54 +25,48 @@ num_runs = cfg["simulation"].get("num_runs", 1)
 run_mode = cfg["simulation"].get("run_mode", "per_algorithm").lower()  # new config param
 
 # Define modes to run
-MODES = ["greedy", "random_walk", "random_walk-biased", "tsp", "tsp-hamiltonian"]
-
+MODES = ["greedy"]
+smell_radius = [1,2,3]
+smell_intensity = [1,3,5]
+potential_feeder_to_forager = [0.05,0.15,0.25]
+forager_ratio = [0.02,0.06,0.1]
 sim_counter = 0  # global counter for all simulations
-
+combinations = []
+for i in smell_radius:
+    for j in smell_intensity:
+        for k in potential_feeder_to_forager:
+            for l in forager_ratio:
+                combinations.append([i,j,k,l])
 # -------------------------------
 # Helper function
 # -------------------------------
-def run_simulation(mode, run_index):
+def run_simulation(mode, run_index, combinations):
     global sim_counter
     sim_counter += 1
     sim_id = sim_counter
+    smell_radius = combinations[0]
+    smell_intensity = combinations[1]
+    potential_feeder_to_forager = combinations[2]
+    forager_ratio = combinations[3]
     print(f"[RUN {run_index+1}] Mode: {mode} | Simulation ID: {sim_id}")
-    subprocess.run(["python", "main.py", "--mode", mode, "--sim-id", str(sim_id), "--append-logs"], check=True)
+    subprocess.run(["python", "main.py", "--mode", mode, "--sim-id", str(sim_id), "--append-logs", \
+                    "--smell-radius", str(smell_radius), "--smell-intensity", str(smell_intensity),\
+                     "--potential-feeder-to-forager", str(potential_feeder_to_forager), "--forager-ratio", str(forager_ratio),\
+                        "--sensitivity", 'True'], check=True)
 
 # -------------------------------
 # Run strategy
 # -------------------------------
-if run_mode == "per_algorithm":
-    print(f"\n[INFO] Running {num_runs} times per mode (grouped by algorithm)...\n")
+run = 0
+print(f"\n[INFO] Running {num_runs} times per mode (grouped by algorithm)...\n")
+for combination in combinations:
     for mode in MODES:
-        for run in range(num_runs):
-            simulation_id = run + 1  # Each mode has its own independent ID sequence
-            print(f"[RUN] Mode: {mode} | Simulation ID: {simulation_id}")
-            subprocess.run([
-                "python", "main.py",
-                "--mode", mode,
-                "--sim-id", str(simulation_id),
-                "--append-logs"
-            ], check=True)
-
-elif run_mode == "per_round":
-    print(f"\n[INFO] Running {num_runs} rounds (each round covers all modes)...\n")
-    for run in range(num_runs):
-        simulation_id = run + 1  # All modes in this round share the same simulation ID
-        print(f"\n=== Round {simulation_id}/{num_runs} ===")
-        for mode in MODES:
-            print(f"[RUN] Mode: {mode} | Simulation ID: {simulation_id}")
-            subprocess.run([
-                "python", "main.py",
-                "--mode", mode,
-                "--sim-id", str(simulation_id),
-                "--append-logs"
-            ], check=True)
+        simulation_id = run + 1  # Each mode has its own independent ID sequence
+        run_simulation(mode, simulation_id, combination)
 
 else:
     print(f"[ERROR] Unknown run_mode: {run_mode}")
     exit(1)
-
 
 # -------------------------------
 # Combine aggregate CSVs
