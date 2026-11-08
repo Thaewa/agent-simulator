@@ -271,8 +271,6 @@ class instanceGenerator:
         # Assign pathfinding mode directly from simulator_dictionary
         if hasattr(self, "simulator_dictionary") and "pathfinding_mode" in self.simulator_dictionary:
             wasp.path_finding = self.simulator_dictionary["pathfinding_mode"]
-        else:
-            wasp.path_finding = "unknown"
         return wasp
 
     # -------------------------
@@ -755,6 +753,9 @@ class Simulator:
             
         # Run the simulation for the defined length of the simulation
         while i < t:
+            # Zero belongs only to initialization. Actions and resulting state
+            # for step i + 1 must share that step's timestamp in every log.
+            self.currentTime += 1
             if i % 10 == 0:
                 hungerCue = np.mean([ getattr(agent, "hungerCue", 0) for agent in self.agents if isinstance(agent, Wasp) ])
                 larvaeHunger = np.mean([ getattr(agent, "hunger", 0) for agent in self.agents if isinstance(agent, Larvae)])        
@@ -810,7 +811,7 @@ class Simulator:
                     )
                 j += 1
 
-            # Log nest + larvae summary BEFORE incrementing time
+            # Log nest and larvae state for the current completed step.
             self.logger.log_nest(
                 timestamp=self.currentTime,
                 total_foragers=len([a for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FORAGER]),
@@ -838,9 +839,6 @@ class Simulator:
                     food_received=getattr(larva, "food", 0),
                     distance_to_nest=np.sqrt(larva.x**2 + larva.y**2)
                 )
-
-            # Added here — move self.currentTime increment after all logging
-            self.currentTime += 1
 
             if (i + 1) % 10 == 0:
                 num_foragers = sum(isinstance(a, Wasp) and a.role == WaspRole.FORAGER for a in self.agents)

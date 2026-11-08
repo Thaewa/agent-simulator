@@ -1,28 +1,19 @@
-import unittest
-from simulator import Simulator
-from agents import Wasp, Larvae, WaspRole
+import numpy as np
+from simulation_fixture import LoggedSimulationTestCase
 
-class TestIntegration(unittest.TestCase):
-    def setUp(self):
-        self.sim = Simulator()
-        self.w1 = Wasp("W1", 0, 0, WaspRole.FORAGER, food=5)
-        self.w2 = Wasp("W2", 1, 1, WaspRole.FEEDER, food=5)
-        self.l1 = Larvae("L1", 2, 2, hunger=5)
-        self.sim.addAgent(self.w1)
-        self.sim.addAgent(self.w2)
-        self.sim.addAgent(self.l1)
-        self.sim.addForage(5, 5)
-
+class TestIntegration(LoggedSimulationTestCase):
     def test_run_simulation_report(self):
-        report = self.sim.runSimulation(3)
-        self.assertIsInstance(report, dict)
-        self.assertIn("movements", report)
-        self.assertIn("feedLarvae", report)
-        self.assertIn("hungerLarvae", report)
-        self.assertIn("hungerWasp", report)
+        report = self.run_simulation(3)
+        self.assertEqual(set(report), {"movements", "feedLarvae", "hungerLarvae", "hungerWasp"})
+        self.assertEqual(set(report["hungerWasp"]), {"F1", "Fo1"})
+        self.assertEqual(set(report["hungerLarvae"]), {"L1"})
+        self.assertEqual(self.sim.currentTime, 3)
+        for agent in self.sim.agents:
+            self.assertTrue(np.isfinite([agent.x, agent.y, agent.food, agent.hunger]).all())
+            self.assertGreaterEqual(agent.food, 0)
 
-    def test_hunger_threshold_behavior(self):
-        self.l1.hunger = 10
-        report = self.sim.runSimulation(1)
-        self.assertIn("hungerLarvae", report)
-        self.assertGreater(report["hungerLarvae"]["L1"][-1], 0)
+    def test_unfed_larva_accumulates_hunger(self):
+        self.larvae.hunger = 10
+        self.feeder.food = self.forager.food = self.larvae.food = 0
+        report = self.run_simulation(1)
+        self.assertAlmostEqual(report["hungerLarvae"]["L1"][-1], 10 + self.larvae.hungerRate)

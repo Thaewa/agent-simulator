@@ -6,11 +6,13 @@ from logger import DataLogger
 import yaml
 import os
 import argparse
+from pathfinding import PATHFINDING_MODES, normalize_pathfinding_mode
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Agent Simulation Runner")
-    parser.add_argument("--mode", type=str, required=True,
-                        help="Pathfinding mode (greedy, pheromone, random, etc.)")
+    parser.add_argument("--mode", type=normalize_pathfinding_mode,
+                        choices=PATHFINDING_MODES, required=True,
+                        help="Pathfinding mode (case-insensitive)")
     parser.add_argument("--sim-id", type=str, default=None,
                         help="Unique simulation ID for batch runs")
     parser.add_argument("--append-logs", action="store_true")

@@ -9,6 +9,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 import networkx as nx
+from pathfinding import normalize_pathfinding_mode
 
 
 # ---------------------------
@@ -175,8 +176,8 @@ class Wasp(Agent):
     :type x: int
     :param y: Initial Y-coordinate of the wasp.
     :type y: int
-    :param path_finding: Path-finding strategy (e.g. ``"greedy"``, ``"random_walk"``, ``"biased_random_walk"``,
-                         strings containing ``"TSP"`` or ``"Hamiltonian"`` for tour planning).
+    :param path_finding: Path-finding strategy (e.g. ``"greedy"``, ``"random_walk"``, ``"random_walk-biased"``,
+                         ``"tsp"`` or ``"tsp-hamiltonian"`` for tour planning; names are case-insensitive).
     :type path_finding: str
     :param hunger: Initial hunger level.
     :type hunger: int
@@ -342,6 +343,15 @@ class Wasp(Agent):
         self.hunger_cue = 0.0 # <---- # stores latest hunger cue sensed
         self.step_count = 0  # <---- New field
         
+    @property
+    def path_finding(self) -> str:
+        return self._path_finding
+
+    @path_finding.setter
+    def path_finding(self, mode: str) -> None:
+        # The generator can override this after construction as well.
+        self._path_finding = normalize_pathfinding_mode(mode)
+
     def updateRolePersistence(self) -> None:
         """
         Update the role persistence by adding ``rolePersistenceUpdate``.
@@ -376,7 +386,7 @@ class Wasp(Agent):
     # Extra methods
     def feedWasp(self, wasp: Agent, passed_food: int) -> None:
         """
-        Transfer food to another wasp and update hunger cues.
+        Transfer up to the requested food, limited by recipient capacity.
 
         :param wasp: Target wasp to receive food.
         :type wasp: Agent
@@ -385,13 +395,18 @@ class Wasp(Agent):
         :return: ``None``.
         :rtype: None
         """
+        if wasp is self or passed_food <= 0 or self.food < passed_food:
+            return
+        amount = min(passed_food, max(0, wasp.maxFood - wasp.food))
+        if amount <= 0:
+            return
         # When wasps interact they also exchange information of their local hunger cues 
         if wasp.hungerCue > 0.0:
             self.hungerCue = (self.hungerCue + wasp.hungerCue) / 2
         # Update local food storage 
-        self.food -= passed_food
+        self.food -= amount
         # Update target wasp
-        wasp.food += passed_food
+        wasp.food += amount
         # Reset target wasp hunger
         wasp.hunger = self.noHunger
         self.feed_count_wasp += 1 
@@ -407,6 +422,8 @@ class Wasp(Agent):
         :return: ``None``.
         :rtype: None
         """
+        if passed_food <= 0 or self.food < passed_food:
+            return
         # Update local food storage
         self.food -= passed_food
         # Update target larva
@@ -431,8 +448,8 @@ class Wasp(Agent):
         """
         # Define the amount of food to transfer given the target type
         passed_food = self.foodTransferToLarvae if target.type == AgentType.LARVAE else self.foodTransferToWasp
-        # If there is more food than what is going to be transferred
-        if self.food > passed_food:
+        # A donor can give its last complete ration.
+        if passed_food > 0 and self.food >= passed_food:
             # If the wasp is a forager and the hunger cue is high it is more likely to do an unload than to directly feed larvae
             if self.hungerCuesHigh() and self.role == WaspRole.FORAGER:
                 if isinstance(target, Larvae):
@@ -447,9 +464,8 @@ class Wasp(Agent):
                     # Feeders and foragers feed larvae if hunger cues are not high
                     self.feedLarvae(target, passed_food)
                 else:
-                    # Only transfer food to fellow wasp if the agent is not full yet
-                    if target.food+passed_food < target.maxFood:
-                        self.feedWasp(target, passed_food)
+                    # The transfer method enforces the recipient's capacity.
+                    self.feedWasp(target, passed_food)
         else:
             self.storedEvents.append(
                 f"{self.id} tried to feed {target.id} but had no food"
@@ -459,9 +475,9 @@ class Wasp(Agent):
         """
         Move towards foraging points and possibly gain food.
 
-        If within smell radius of any foraging point and a random draw exceeds
+        If near a foraging point and a random draw is below
         ``chanceOfForaging`` (and capacity allows), increment stored food by
-        ``forageIncrease`` and reset hunger.
+        ``forageIncrease`` up to ``maxFood`` and reset hunger.
 
         :param forage: List of foraging point coordinates.
         :type forage: List[numpy.ndarray]
@@ -474,8 +490,8 @@ class Wasp(Agent):
         if idx.shape[0] > 0:
             for id in idx:
                 # If the forager wasp is not full and a random draw is less than the chance of foraging realize the forage
-                if self.food<self.maxFood and np.random.rand() < self.chanceOfForaging:
-                    self.food += self.maxFood  # (Behavior preserved as in original code)
+                if self.food < self.maxFood and self.forageIncrease > 0 and np.random.rand() < self.chanceOfForaging:
+                    self.food += min(self.forageIncrease, self.maxFood - self.food)
                     self.hunger = self.noHunger
                     self.storedEvents.append(
                         f"{self.id} is in location {self.getPosition()} and foraged food at location {forage[id]}"
@@ -820,20 +836,20 @@ class Wasp(Agent):
         arr_full = np.ones_like(X, dtype=bool)
         # Create a grid array from the X and Y arrays which represent the X and Y coordinates of each point in the grid near the wasp
         G = grid_graph_from_array(arr_full, X, Y)
-        int_position = [int(pos) for pos in self.getPosition()]
-        nodes = np.array(larvae_positions)
-        nodes = (nodes.astype(int)).tolist()
-        # Createa list of nodes that must be visited in the path, these nodes represent the local larvae that can be feed and the agent position.
-        # This guarantees that either the regular TSP path or the Hamiltonian path that is found contains the agent position and routes back to it. 
-        nodes_list = [tuple(node) for node in nodes]
+        position = tuple(self.getPosition())
+        # Preserve half-cell coordinates; integer conversion changes the targets
+        # and can produce nodes that do not exist in the local graph.
+        nodes_list = list(dict.fromkeys(tuple(node) for node in larvae_positions))
+        if not nodes_list:
+            return []
+        if len(nodes_list) == 1:
+            return nx.shortest_path(G, position, nodes_list[0])
         tsp = nx.approximation.traveling_salesman_problem(
-            G, nodes=nodes_list, cycle=True if "Hamiltonian" in self.path_finding else False
+            G, nodes=nodes_list, cycle=self.path_finding == "tsp-hamiltonian"
         )
-        int_position = [int(pos) for pos in self.getPosition()]
-        # If the tsp path does not contain the agent position, add a path to it. This is a safeguard in case the tsp path does not contain 
-        # the agent position in a conveniently ordered manner.
-        added_path = nx.shortest_path(G, tuple(int_position), tsp[0])
-        return added_path + tsp
+        added_path = nx.shortest_path(G, position, tsp[0])
+        # The connector already includes the first tour node.
+        return added_path + tsp[1:]
 
     def get_path(self, larvaePositions: np.ndarray, index: np.ndarray) -> None:
         """
@@ -846,33 +862,36 @@ class Wasp(Agent):
         :return: ``None``.
         :rtype: None
         """
-        # Define the search area for the path over close larvae positions
-        min_x = larvaePositions[index][:, 0].min()
-        max_x = larvaePositions[index][:, 0].max()
-        min_y = larvaePositions[index][:, 1].min()
-        max_y = larvaePositions[index][:, 1].max()
-        x = np.arange(min(min_x - 2, self.x - 2), max(max_x + 2, self.x + 2))
-        y = np.arange(min(min_y - 2, self.y - 2), max(max_y + 2, self.y + 2))
-        # Construct the grid that covers the search area allocating one node to each point in the discretized grid.
+        if self.foodTransferToLarvae <= 0:
+            raise ValueError("foodTransferToLarvae must be positive for route planning")
+        capacity = int(np.floor(self.food / self.foodTransferToLarvae))
+        target_count = min(len(index), capacity)
+        if target_count <= 0:
+            self.path = None
+            return
+        _, targets = m_closest_rows(
+            larvaePositions[index], np.array(self.getPosition()), target_count
+        )
+        # Build the smallest rectangular lattice containing the selected targets
+        # and the wasp. Match the simulator's half-cell movement resolution.
+        step = min(abs(value) for value in self.oneStepList if value != 0)
+        points = np.vstack((targets, self.getPosition()))
+        lower = np.floor(points.min(axis=0) / step).astype(int)
+        upper = np.ceil(points.max(axis=0) / step).astype(int)
+        x = np.arange(lower[0], upper[0] + 1) * step
+        y = np.arange(lower[1], upper[1] + 1) * step
         X, Y = np.meshgrid(x, y)
-        # Estimate the number of agents that can be fed given the current amount of food
-        m = np.floor((self.food / self.foodTransferToLarvae))
-        if m < len(index) and m>0:
-            # Sort the larvae by distance to the wasp and select the m closest larvae
-            _, relevant_larvae_position = m_closest_rows(larvaePositions[index], np.array(self.getPosition()), min(len(index), int(m)))
-            if relevant_larvae_position.shape[0] == 1:
-                pass
-            else:
-                # Use the m closest larvae to generate the TSP path toward them from the agent position.
-                self.path = self.estimate_path(x, y, relevant_larvae_position, X, Y)
-                # Collect the next step in the found TSP path , and use it to update the next step
-                self.next_step["x"] = self.path[0][0] - self.x
-                self.next_step["y"] = self.path[0][1] - self.y
-                # Remove the next position from the path as it will be taken by the agent 
-                self.path = self.path[1:]
-        # If there is not enough food to feed any larvae, do not find a path
-        else:
-            pass
+        route = self.estimate_path(x, y, targets, X, Y)
+        # move() randomizes a zero step. Skip the initial current-position node
+        # so that it cannot accidentally replace the first planned movement.
+        while route and route[0] == tuple(self.getPosition()):
+            route = route[1:]
+        if not route:
+            self.path = None
+            return
+        self.next_step["x"] = route[0][0] - self.x
+        self.next_step["y"] = route[0][1] - self.y
+        self.path = route[1:] or None
 
     def shortest_path_finding(self, larvaePositions: np.ndarray) -> None:
         """
@@ -884,7 +903,7 @@ class Wasp(Agent):
         :rtype: None
         """
         # Find a TSP path towards the larvae if there isn't a current path already in memory.
-        if self.path is None:
+        if not self.path:
             # Find the larvae within the expanded smell radius of the agent so that only the closest larvae are considered in the path
             index = np.where(
                 in_circle((larvaePositions[:, 0] - self.x), (larvaePositions[:, 1] - self.y), (self.smellRadius + self.smellRadiusBuffer)))[0]
@@ -898,7 +917,8 @@ class Wasp(Agent):
         else:
             # If the agent is already in a position close to the next step in the path, remove the path
             # This is a safeguard because the non-blocking behavior alters the next step taken by the agent and in turn this affects the validity of the path
-            if abs(self.path[0][0] - self.x) > 1 or abs(self.path[0][1] - self.y) > 1:
+            step = min(abs(value) for value in self.oneStepList if value != 0)
+            if abs(self.path[0][0] - self.x) > step or abs(self.path[0][1] - self.y) > step:
                 self.path = None
             # If there is a path and it is still a valid path because the non-blocking method has not altered it, use the next step in the path
             else:
@@ -953,8 +973,8 @@ class Wasp(Agent):
             # If strategy contains random walk, use such strategy
             if "random_walk" in self.path_finding:
                 self.random_walk_path_finding()
-            # If strategy contains TSP, use such strategy
-            if "TSP" in self.path_finding:
+            # Select only the supported, normalized TSP modes.
+            if self.path_finding in ("tsp", "tsp-hamiltonian"):
                 self.shortest_path_finding(larvaePositions)
             self.storedEvents.append(f"{self.id} sensed gradient ")
 
@@ -1001,7 +1021,7 @@ class Wasp(Agent):
         if idx.shape[0] > 0:
             for id in idx:
                 # If the wasp is not full and a random draw is less than the chance of foraging realize the feed
-                if random.random() > self.chanceOfFeeding and agents[id].hunger > 1.2 and self.food>1:
+                if random.random() > self.chanceOfFeeding and agents[id].hunger > 1.2 and self.food > 0:
                     self.feed(agents[id])
                     if self.role == WaspRole.FORAGER:
                         bout = FeedingBout(self, agents[id],t)
@@ -1135,4 +1155,3 @@ class FeedingBout():
         self.feeder = feeder
         self.receiver = receiver
         self.timestamp = t
-        

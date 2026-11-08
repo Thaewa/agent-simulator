@@ -1,58 +1,52 @@
 import unittest
-from simulator import Simulator
-from agents import Wasp, Larvae, WaspRole
+import pandas as pd
+from agents import Wasp, WaspRole
+from simulation_fixture import LoggedSimulationTestCase
 
-class TestSimulator(unittest.TestCase):
-    def setUp(self):
-        # Create a simulator with at least:
-        # - 1 feeder wasp
-        # - 1 forager wasp
-        # - 1 larvae
-        # Also add at least one forage point (required by simulation conditions).
-        self.sim = Simulator()
-        self.feeder = Wasp("F1", 0, 0, WaspRole.FEEDER, food=5)
-        self.forager = Wasp("Fo1", 1, 1, WaspRole.FORAGER, food=5)
-        self.larvae = Larvae("L1", 2, 2, hunger=3)
-
-        self.sim.addAgent(self.feeder)
-        self.sim.addAgent(self.forager)
-        self.sim.addAgent(self.larvae)
-        self.sim.addForage(3, 3)
-
+class TestSimulator(LoggedSimulationTestCase):
     def test_add_and_remove_agent(self):
-        """Agent should be correctly added and removed from the simulation"""
-        w = Wasp("Wtemp", 0, 0, WaspRole.FORAGER)
-        self.sim.addAgent(w)
-        self.assertIn(w, self.sim.agents)   # Ensure agent was added
-        self.sim.removeAgent(w)
-        self.assertNotIn(w, self.sim.agents)  # Ensure agent was removed
+        wasp = Wasp("Wtemp", outer_nest_radius=4, x=0, y=0)
+        wasp.role = WaspRole.FORAGER
+        self.sim.addAgent(wasp)
+        self.assertIn(wasp, self.sim.agents)
+        self.sim.removeAgent(wasp)
+        self.assertNotIn(wasp, self.sim.agents)
 
-    def test_step_advances_time(self):
-        """Calling step() should advance the simulation time by 1"""
-        self.sim.step()
+    def test_one_simulation_step_advances_time(self):
+        self.run_simulation(1)
         self.assertEqual(self.sim.currentTime, 1)
 
     def test_aggregate_movements(self):
-        """Initial agent position should appear in the movement history"""
-        movements = self.sim.aggregateMovements()
-        self.assertIn("F1", movements)  # Feeder's ID should exist in history
-        self.assertEqual(movements["F1"], [[0, 0]])  # Position must match initial
+        self.assertEqual(self.sim.aggregateMovements()["F1"], [[0, 0]])
 
     def test_run_simulation_advances_time(self):
-        """runSimulation() should return a report with required keys"""
-        report = self.sim.runSimulation(2)
-        self.assertIn("movements", report)
-        self.assertIn("feedLarvae", report)
-        self.assertIn("hungerLarvae", report)
-        self.assertIn("hungerWasp", report)
+        report = self.run_simulation(2)
+        self.assertEqual(self.sim.currentTime, 2)
+        self.assertEqual(set(report), {"movements", "feedLarvae", "hungerLarvae", "hungerWasp"})
 
     def test_aggregate_hunger(self):
-        """Hunger values for larvae and wasps should be correctly aggregated"""
-        hunger_larvae = self.sim.aggregateHungerLarvae()
-        hunger_wasp = self.sim.aggregateHungerWasp()
-        self.assertEqual(hunger_larvae["L1"], [3])  # Initial hunger of larvae
-        self.assertEqual(hunger_wasp["F1"], [0])    # Feeder hunger should start at 0
+        self.assertEqual(self.sim.aggregateHungerLarvae()["L1"], [3])
+        self.assertEqual(self.sim.aggregateHungerWasp()["F1"], [0])
 
+    def test_logs_contain_initial_state_then_each_completed_step(self):
+        self.run_simulation(3)
+        nest = pd.read_csv(self.logs / "nest_log_greedy.csv")
+        larvae = pd.read_csv(self.logs / "larvae_log_greedy.csv")
+        agents = pd.read_csv(self.logs / "agent_log_greedy.csv")
+        self.assertEqual(nest.timestamp.tolist(), [0, 1, 2, 3])
+        self.assertEqual(larvae.timestamp.tolist(), [0, 1, 2, 3])
+        for identifier in ("F1", "Fo1"):
+            self.assertEqual(agents[agents.agent_id == identifier].timestamp.tolist(), [0, 1, 2, 3])
+        self.assertFalse(nest.duplicated(["simulation_id", "timestamp"]).any())
+        self.assertEqual(larvae[larvae.timestamp == 0].iloc[0].hunger_level, 3)
+        last = agents[(agents.agent_id == "F1") & (agents.timestamp == 3)].iloc[0]
+        self.assertEqual([last.position_x, last.position_y], self.feeder.getPosition())
+
+    def test_zero_steps_only_logs_initial_state(self):
+        self.run_simulation(0)
+        nest = pd.read_csv(self.logs / "nest_log_greedy.csv")
+        self.assertEqual(nest.timestamp.tolist(), [0])
+        self.assertEqual(self.sim.currentTime, 0)
 
 if __name__ == "__main__":
     unittest.main()
