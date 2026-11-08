@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from agents import Wasp, WaspRole
+from agents import Larvae, Wasp, WaspRole
 from logger import DataLogger
 from pathfinding import PATHFINDING_MODES
 from simulator import Simulator, instanceGenerator
@@ -71,6 +71,30 @@ def snapshot(simulator):
             "agents": [agent.__dict__ for agent in simulator.agents],
             "simulator": {key: value for key, value in simulator.__dict__.items()
                           if key not in {"agents", "grid", "forage", "logger"}}}
+
+
+def effective_configuration(config, simulator):
+    adults = [a for a in simulator.agents if isinstance(a, Wasp)]
+    larvae = [a for a in simulator.agents if isinstance(a, Larvae)]
+    legacy = (
+        ("instance_generator", "larvae_to_wasps_ratio"),
+        ("instance_generator", "larvae_hunger_multiplier"),
+        ("instance_generator", "hunger_rate"),
+        ("simulator", "grid_buffer"), ("simulator", "forage_buffer"),
+        ("simulator", "number_of_bouts"), ("simulation", "pathfinding_mode"),
+    )
+    return {
+        "adult_count": len(adults), "larval_count": len(larvae),
+        "effective_adult_rates": sorted({round(float(a.hungerRate), 6) for a in adults}),
+        "effective_larval_rates": sorted({round(float(a.hungerRate), 6) for a in larvae}),
+        "realized_larval_multipliers": sorted({float(a.hungerMultiplier) for a in larvae}),
+        "total_larval_metabolic_demand_per_step": sum(float(a.hungerRate) for a in larvae),
+        "role_changes_frequency": simulator.role_changes_frequency,
+        "max_role_changes": simulator.max_role_changes,
+        "ignored_legacy_keys": [f"{section}.{key}" for section, key in legacy
+                                if key in config.get(section, {})],
+        "experiment_overrides": "one run per mode; CLI seed/steps and isolated output take precedence",
+    }
 
 
 def run_mode(base, config, mode, seed, steps, output, console):
@@ -163,12 +187,14 @@ def main():
             base = prepare_instance(config, args.seed)
     # JSON is portable and records all generated instance state for later replay.
     write_json(output / "initial_instance.json", snapshot(base))
+    effective = effective_configuration(config, base)
     manifest = {
         "status": "running", "seed": args.seed, "steps": args.steps,
         "modes": list(PATHFINDING_MODES), "runs_per_mode": 1,
         "initialization": "deep copies of the same generated instance; both RNGs reset per mode",
         "movement_model": "sequential_exclusive_adult_cells_v1",
         "nest_regions": "inner_boundary_inclusive_outer_strictly_exterior",
+        "effective_configuration": effective,
         "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "git_status": subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True),
         "source_sha256": source_hashes, "python": platform.python_version(),
@@ -181,6 +207,8 @@ def main():
     }
     write_json(output / "manifest.json", manifest)
     print(f"Results: {output}", flush=True)
+    print(f"Initial nest: {effective['adult_count']} adults / {effective['larval_count']} larvae; "
+          f"effective larval rates: {effective['effective_larval_rates']} per step", flush=True)
     try:
         for mode in PATHFINDING_MODES:
             print(f"Running {mode}...", flush=True)

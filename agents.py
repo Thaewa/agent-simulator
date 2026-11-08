@@ -308,6 +308,8 @@ class Wasp(Agent):
         feeder_to_forager_probability: float = 0.8,
         forager_to_feeder_probability: float = 0.2,
     ) -> None:
+        if not np.isfinite(hunger_rate) or hunger_rate < 0:
+            raise ValueError("Wasp hunger_rate must be finite and nonnegative")
         super().__init__(agent_id, x, y, AgentType.WASP, hunger, food, outer_nest_radius)
         self.path_finding: str = path_finding
         self.smellRadius: int = smell_radius
@@ -1105,19 +1107,17 @@ class Larvae(Agent):
     :type hunger: int, optional
     :param food: Initial amount of stored food. Defaults to ``0``.
     :type food: int, optional
-    :param hungerMultiplier: Multiplier applied to the base ``hungerRate`` inherited
-                             from :class:`Agent`. The effective rate becomes
-                             ``hungerMultiplier * hungerRate``.
+    :param hungerMultiplier: Multiplier applied to configured ``hunger_rate``.
+                             The effective rate is ``hungerMultiplier * hunger_rate``.
     :type hungerMultiplier: float, optional
-    :param hunger_rate: Per-step hunger increase rate stored on this instance
-                        (kept for parity with :class:`Wasp`). Defaults to ``0.01``.
+    :param hunger_rate: Base per-step metabolic/hunger rate. Defaults to ``0.01``.
     :type hunger_rate: float, optional
 
     **Key attributes**
 
     :ivar hunger_rate: Per-step hunger increase rate stored on this instance.
     :vartype hunger_rate: float
-    :ivar hungerMultiplier: Scalar applied to the inherited ``hungerRate``.
+    :ivar hungerMultiplier: Scalar applied to the configured base rate.
     :vartype hungerMultiplier: float
     :ivar hungerRate: Effective per-step hunger rate after applying ``hungerMultiplier``.
     :vartype hungerRate: float
@@ -1133,11 +1133,15 @@ class Larvae(Agent):
         hungerMultiplier: float = 1.0,
         hunger_rate: float = 0.01,
     ) -> None:
+        if (not np.isfinite([hunger_rate, hungerMultiplier]).all()
+                or hunger_rate < 0 or hungerMultiplier < 0):
+            raise ValueError("Larval hunger rate and multiplier must be finite and nonnegative")
         super().__init__(agent_id, x, y, AgentType.LARVAE, hunger, food)
         self.hunger_rate = hunger_rate
         self.hungerMultiplier = hungerMultiplier
-        # scale the inherited Agent.hungerRate
-        self.hungerRate = self.hungerMultiplier * self.hungerRate
+        self.hungerRate = self.hungerMultiplier * self.hunger_rate
+        if not np.isfinite(self.hungerRate):
+            raise ValueError("Effective larval hunger rate must be finite")
 
     def generateEvent(self) -> str:
         """

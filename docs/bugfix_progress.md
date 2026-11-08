@@ -138,8 +138,17 @@ Validation: all 78 tests pass and the five-mode seeded smoke check passes. A sep
 
 Validation: all 98 tests pass. New cases cover membership, stay, bounds, retries, non-finite actions, occupied origins, swaps, contested cells, half-cell default grids, masked TSP routes, exterior targets and unique generated populations across 20 seeds. The five-mode seeded smoke check replays identically with geometry assertions and unchanged baseline logs. A two-step generated-nest runner check also passes in a temporary output directory. No new 500-step run was performed for this checkpoint.
 
+## Step 10: effective larval metabolism and explicit legacy configuration
+
+- Apply configured larval base rate before multiplying, rather than inheriting an unrelated 0.01 default; use L3 in sampling instead of repeating L2.
+- Reject negative/non-finite metabolic rates or multipliers, including invalid multiplier choices before random selection.
+- Mark inactive legacy YAML keys without assigning them invented biological behavior or changing numerical parameter values. Document actual population and radius controls.
+- Record realized populations, effective rates/multipliers, role scheduling, larval demand and ignored keys in experiment manifests. Remove the fixed hunger-plot upper bound so corrected dynamics are not hidden.
+
+Validation: all 106 tests pass; seeded smoke checks pass; a three-step generated TSP run passes geometry, capacity, finite-state and event-total checks in isolated output. The current seeded generated nest realizes rates 0.3/0.6/0.9 and total larval demand 17.7 per step. This is a configuration-behavior correction, not empirical calibration, and may change hunger strongly. Details are in docs/configuration.md. No new 500-step experiment was run for this checkpoint.
+
 ## Required next steps before interpreting algorithm performance
 
-1. Audit effective configuration parameters, especially larval hunger-rate assignment and hunger multiplier selection, before claiming the model follows its configured biology.
-2. Rerun generated nests after completing that audit checkpoint. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate the role, feeding-probability, metric and movement fixes.
+1. Run a short generated-nest checkpoint with the newly effective configuration and inspect hunger versus food supply. Do not tune parameters just to recover historical graph shapes.
+2. Establish empirical parameter calibration and the real-nest/field-statistics comparison with the advisor. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate these audits.
 3. Use multiple independent seeds and controlled historical replays for performance comparisons. Current single-seed plots are exploratory.

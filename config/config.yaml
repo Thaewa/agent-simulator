@@ -1,14 +1,14 @@
 instance_generator:
-  larvae_to_wasps_ratio: 0.2 # Ratio of wasps to generate relative to the number of larvae.
-  number_of_cells: 30 # Minimum number of cells to determine the nest size.
+  larvae_to_wasps_ratio: 0.2 # Legacy/inactive: adult count currently equals number_of_cells.
+  number_of_cells: 30 # Fixed size input: adult population and nominal nest area.
   nest_fill_percentage: 0.95 # Fraction of available nest cells to populate with larvae.
   forage_fill_percentage: 0.1 # Fraction of available forage ring cells to activate as forage sites.
-  larvae_hunger_multiplier: 3.0 # Multiplier for hunger rate of inner-nest larvae.
+  larvae_hunger_multiplier: 3.0 # Legacy/inactive: use multipliers in the larvae section.
   mean_food_capacity: 6.0 # Mean of the normal distribution used for wasp max food capacity sampling.
   std_food_capacity: 1.0 # Standard deviation of the normal distribution for wasp max food capacity sampling.
   forage_distance: 10 # Radial distance between the nest radius and the start of the forage ring.
-  hunger_rate: 0.2 # Base per-step hunger rate assigned to generated agents.
-  proportion_inner_larvae: 0.5 # Fraction of the nest radius that defines the inner-nest radius.
+  hunger_rate: 0.2 # Legacy/inactive: use wasp.hunger_rate and larvae.hunger_rate.
+  proportion_inner_larvae: 0.5 # Fraction allocated to inner larvae and inner nominal area.
   grid_buffer:  1 # Buffer added to the grid boundaries to ensure agents can move freely.
   forage_buffer: 10 # Buffer added to the forage ring radius.
 
@@ -35,7 +35,7 @@ wasp:
   forager_to_feeder_probability: 0.2 # Probability of a forager becoming a feeder if hunger cues are low.
 
 larvae:
-  hunger_rate: 0.3 # Base per-step hunger increase rate for larvae.
+  hunger_rate: 0.3 # Base per-step metabolic/hunger rate, multiplied per larva.
   hunger_rate_multiplier_l2: 2.0 # Multiplier applied to the hunger rate for L2 larvae to create variation.
   hunger_rate_multiplier_l3: 3.0 # Multiplier applied to the hunger rate for L3 larvae to create variation.
   
@@ -43,12 +43,12 @@ simulator:
   grid_buffer: 1 # (DEPRECATED) Buffer for grid generation, prefer instance_generator.grid_buffer.
   forage_buffer: 20 # (DEPRECATED) Buffer for forage generation, prefer instance_generator.forage_buffer.
   forager_ratio: 0.1 # Ratio of forager wasps to total number of wasps.
-  number_of_bouts: 32 # Number of feeding bouts to simulate per simulation run. They indicate the length of each simulation run.
+  number_of_bouts: 32 # Legacy/inactive stop condition; runs currently use a fixed step horizon.
   potential_feeder_to_forager_buffer: 0.2 # Extra proportion of feeders that can become foragers
 
 simulation:
   num_runs: 1 # Number of simulation runs to perform (used by external scripts).
   run_mode: per_round   # Defines how batch runs are executed (e.g., 'per_round' or 'per_algorithm').
-  pathfinding_mode: TSP # Default pathfinding mode for the simulation (overridden by CLI).
+  pathfinding_mode: TSP # Legacy/inactive: main uses --mode; run_experiment covers all modes.
   
 sensitivity: false

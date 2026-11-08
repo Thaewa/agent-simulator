@@ -114,6 +114,9 @@ class instanceGenerator:
         self.wasp_dictionary = wasp_config
     def larvaeDictionary(self, larvae_config: dict):
         # Store larvae configuration in a dictionary from the configuration file
+        for key in ("hunger_rate", "hunger_rate_multiplier_l2", "hunger_rate_multiplier_l3"):
+            if not np.isfinite(larvae_config[key]) or larvae_config[key] < 0:
+                raise ValueError(f"larvae.{key} must be finite and nonnegative")
         self.larvae_dictionary = larvae_config
     def simulatorDictionary(self, simulator_config: dict):
         # Store simulator configuration in a dictionary from the configuration file
@@ -137,7 +140,7 @@ class instanceGenerator:
         # Name larvae by their grid coordinates
         agent_id = "L" + str(np.round(x,2)) + str(np.round(y,2))
         # Randomly choose a hunger multiplier for the larvae
-        random_hunger_multiplier = np.random.choice([1.0, self.larvae_dictionary['hunger_rate_multiplier_l2'],self.larvae_dictionary['hunger_rate_multiplier_l2']], 1)[0]
+        random_hunger_multiplier = np.random.choice([1.0, self.larvae_dictionary['hunger_rate_multiplier_l2'],self.larvae_dictionary['hunger_rate_multiplier_l3']], 1)[0]
         # Populate larvae given the configuration file and the information estimated above
         return Larvae(
             agent_id,

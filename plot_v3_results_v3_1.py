@@ -92,7 +92,7 @@ def plot_larvae_hunger_over_time():
 
         ax.set_title(f"{mode.capitalize()} mode")
         ax.set_ylabel("Hunger level")
-        ax.set_ylim([0.8, 3])  # set max y to 10
+        ax.set_ylim(bottom=0)  # Keep all observed hunger values visible.
         ax.legend()
 
     axes[-1].set_xlabel("Time step")
