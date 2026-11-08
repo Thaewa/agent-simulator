@@ -7,6 +7,7 @@ Working assessment: 2026-11-08. This is a planning record, not an approved resea
 - Advisor email supplied by Thaewa, dated 2026-11-05: the revised manuscript argues that wasps achieve efficiency without route optimization; TSP-style agents should not be the target. The suggested direction is RL as an optimizer comparator on real nest maps, tested against field statistics. The email also asks whether the TSP modes actually ran given the case mismatch.
 - Local capstone report: `C:/Users/Lenovo/Downloads/capstone-report.pdf`, 11 pages. This documents the previous model and proposed extensions. It is not a verified copy of the revised biological manuscript.
 - Report reference [32] names an unpublished 2025 Sharma and Gadagkar manuscript. Its title alone cannot establish the revised manuscript's conclusions or metric definitions.
+- Subsequent local inventory found the biological manuscript at `../manuscripts/[32] .pdf`. Its revision is unverified and its optimization framing differs from the email. See empirical_data_inventory.md for provenance, recoverable methods and unresolved inputs.
 
 Where the report and email disagree, use the email to guide the new project framing. Do not infer the missing manuscript's methods or numerical findings.
 
