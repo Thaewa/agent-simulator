@@ -183,7 +183,8 @@ def grid_graph_from_array(arr, X, Y, connectivity: int = 8):
     # nodes: coordinate-based labels
     for r in range(H):
         for c in range(W):
-            G.add_node((X[r, c], Y[r, c]))
+            if arr[r, c]:
+                G.add_node((X[r, c], Y[r, c]))
 
     # neighbor offsets
     nbrs_4 = [(-1, 0), (1, 0), (0, -1), (0, 1)]

@@ -516,7 +516,7 @@ class Wasp(Agent):
         :return: ``True`` if the next position is inside; otherwise ``False``.
         :rtype: bool
         """
-        return ((self.x + self.next_step["x"]) ** 2 + (self.y + self.next_step["y"]) ** 2) < self.outerNestRadius**2
+        return ((self.x + self.next_step["x"]) ** 2 + (self.y + self.next_step["y"]) ** 2) <= self.outerNestRadius**2
 
     def hungerCuesLow(self) -> bool:
         """
@@ -540,28 +540,16 @@ class Wasp(Agent):
         return not self.hungerCuesLow()
 
     def positionInGrid(self, grid: np.ndarray) -> bool:
-        """
-        Check whether the next position occurs more than once in a grid
-        (used to detect duplicates/collisions in a list of positions).
-
-        :param grid: Grid positions as an ``(N, 2)`` array.
-        :type grid: numpy.ndarray
-        :return: ``True`` if duplicate/occupied; otherwise ``False``.
-        :rtype: bool
-        """
-        mask = np.all(
-            grid == np.array([self.x + self.next_step["x"], self.y + self.next_step["y"]]).T,
-            axis=1,
-        )
-        idx = np.flatnonzero(mask)
-        return len(idx) > 1
+        """Whether the proposed next position is an existing grid cell."""
+        point = np.array([self.x + self.next_step["x"], self.y + self.next_step["y"]])
+        return bool(np.any(np.all(grid == point, axis=1)))
 
     def move(self, next_step_array: np.ndarray, grid: np.ndarray) -> None:
         """
         Move the agent by one step according to ``next_step`` with collision avoidance.
         Logs a movement event after the update.
 
-        :param next_step_array: Array of reserved/planned next steps for other agents.
+        :param next_step_array: Current occupied positions of other adult wasps.
         :type next_step_array: numpy.ndarray
         :param grid: Grid positions as an ``(N, 2)`` array.
         :type grid: numpy.ndarray
@@ -579,43 +567,42 @@ class Wasp(Agent):
             self.feeder_step_count += 1
 
     def _generateNewNextStepIfNecessary(self, next_step_array: np.ndarray, grid: np.ndarray) -> None:
-        """
-        Helper to ensure ``next_step`` is set to a valid, unoccupied step.
+        """Validate a step against grid, nest and occupied adult cells.
 
-        :param next_step_array: Array of reserved/planned next steps for other agents.
-        :type next_step_array: numpy.ndarray
-        :param grid: Grid positions as an ``(N, 2)`` array.
-        :type grid: numpy.ndarray
-        :return: ``None``.
-        :rtype: None
+        Movement is sequential. A valid zero action stays still; after bounded
+        retries, an invalid action also stays at its valid, unoccupied origin.
         """
-        # Check that the next step is not to stay still
-        if self.next_step["x"] == 0 and self.next_step["y"] == 0:
-            # If current next step is zero, generate a new random step
-            self.next_step["x"] = np.random.choice(self.oneStepList, 1)[0]
-            self.next_step["y"] = np.random.choice(self.oneStepList, 1)[0]
-        # Check that the next step position in the grid is not occupied by other agent but it is also inside the grid
-        if next_step_array.shape[0] != 0 or (not self.positionInGrid(grid)):
-            next_step_array_condition = next_step_array == np.array(
-                [self.x + self.next_step["x"], self.y + self.next_step["y"]]
-            ).T
-            count = 0
-            # Choose another next step if the current one is occupied or it is outisde the grid. In the case that the wasp is a feeder the next step
-            # should maintain the feeder wasp within the nest.
-            while (
-                np.any(np.all(next_step_array_condition, axis=1)) and (not self.positionInGrid(grid))
-            ) or (self.role == WaspRole.FEEDER and (not self.inOuterNest())):
-                self.next_step["x"] = np.random.choice(self.oneStepList, 1)[0]
-                self.next_step["y"] = np.random.choice(self.oneStepList, 1)[0]
-                next_step_array_condition = next_step_array == np.array(
-                    [self.x + self.next_step["x"], self.y + self.next_step["y"]]
-                ).T
-                count += 1
-                # If too many iterations have passed let the wasp be still.
-                if count > self.maxStepTrials:
-                    self.next_step["x"] = 0.0
-                    self.next_step["y"] = 0.0
-                    break
+        occupied = np.asarray(next_step_array).reshape(-1, 2)
+        current = np.array(self.getPosition())
+        if not np.isfinite(current).all() or not np.any(np.all(grid == current, axis=1)):
+            raise ValueError(f"{self.id} starts outside the grid")
+        if np.any(np.all(occupied == current, axis=1)):
+            raise ValueError(f"{self.id} starts on another adult's cell")
+        if self.role == WaspRole.FEEDER and np.dot(current, current) > self.outerNestRadius**2:
+            raise ValueError(f"{self.id} starts outside its feeder nest boundary")
+        if not np.isfinite([self.next_step["x"], self.next_step["y"]]).all():
+            raise ValueError(f"{self.id} has a non-finite movement action")
+
+        def valid():
+            point = current + [self.next_step["x"], self.next_step["y"]]
+            return (
+                self.next_step["x"] in self.oneStepList
+                and self.next_step["y"] in self.oneStepList
+                and self.positionInGrid(grid)
+                and not np.any(np.all(occupied == point, axis=1))
+                and (self.role != WaspRole.FEEDER or self.inOuterNest())
+            )
+
+        if valid():
+            return
+        for _ in range(self.maxStepTrials):
+            self.next_step = {
+                "x": np.random.choice(self.oneStepList, 1)[0],
+                "y": np.random.choice(self.oneStepList, 1)[0],
+            }
+            if valid():
+                return
+        self.next_step = {"x": 0, "y": 0}
 
     def _updatePosition(self) -> None:
         """
@@ -852,6 +839,8 @@ class Wasp(Agent):
         :rtype: list
         """
         arr_full = np.ones_like(X, dtype=bool)
+        if self.role == WaspRole.FEEDER:
+            arr_full = in_circle(X, Y, self.outerNestRadius)
         # Create a grid array from the X and Y arrays which represent the X and Y coordinates of each point in the grid near the wasp
         G = grid_graph_from_array(arr_full, X, Y)
         position = tuple(self.getPosition())
@@ -882,6 +871,9 @@ class Wasp(Agent):
         """
         if self.foodTransferToLarvae <= 0:
             raise ValueError("foodTransferToLarvae must be positive for route planning")
+        if self.role == WaspRole.FEEDER and len(index):
+            candidates = larvaePositions[index]
+            index = np.asarray(index)[in_circle(candidates[:, 0], candidates[:, 1], self.outerNestRadius)]
         capacity = int(np.floor(self.food / self.foodTransferToLarvae))
         target_count = min(len(index), capacity)
         if target_count <= 0:

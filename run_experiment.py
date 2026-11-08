@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from agents import Wasp
+from agents import Wasp, WaspRole
 from logger import DataLogger
 from pathfinding import PATHFINDING_MODES
 from simulator import Simulator, instanceGenerator
@@ -75,6 +75,7 @@ def snapshot(simulator):
 
 def run_mode(base, config, mode, seed, steps, output, console):
     simulator = copy.deepcopy(base)
+    grid_cells = set(map(tuple, simulator.grid))
     for agent in simulator.agents:
         if isinstance(agent, Wasp):
             agent.path_finding = mode
@@ -100,6 +101,12 @@ def run_mode(base, config, mode, seed, steps, output, console):
 
     def progress(current):
         result = clear(current)
+        adults = [a for a in current.agents if isinstance(a, Wasp)]
+        positions = [tuple(a.getPosition()) for a in adults]
+        assert len(positions) == len(set(positions)), "Adults share a cell"
+        assert all(position in grid_cells for position in positions), "Adult left grid"
+        assert all(a.x**2 + a.y**2 <= a.outerNestRadius**2
+                   for a in adults if a.role == WaspRole.FEEDER), "Feeder left nest"
         if current.currentTime % 50 == 0 or current.currentTime == steps:
             print(f"  {mode}: {current.currentTime}/{steps} steps", file=console, flush=True)
         return result
@@ -160,6 +167,8 @@ def main():
         "status": "running", "seed": args.seed, "steps": args.steps,
         "modes": list(PATHFINDING_MODES), "runs_per_mode": 1,
         "initialization": "deep copies of the same generated instance; both RNGs reset per mode",
+        "movement_model": "sequential_exclusive_adult_cells_v1",
+        "nest_regions": "inner_boundary_inclusive_outer_strictly_exterior",
         "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "git_status": subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True),
         "source_sha256": source_hashes, "python": platform.python_version(),

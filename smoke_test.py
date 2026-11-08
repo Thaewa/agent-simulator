@@ -89,6 +89,11 @@ def run_case(mode, output):
 
     def record_move(current_sim, wasp):
         result = move(current_sim, wasp)
+        positions = [tuple(a.getPosition()) for a in current_sim.agents if isinstance(a, Wasp)]
+        assert len(positions) == len(set(positions)), "Adults share a cell"
+        assert np.any(np.all(current_sim.grid == wasp.getPosition(), axis=1)), "Adult left grid"
+        if wasp.role == WaspRole.FEEDER:
+            assert wasp.x**2 + wasp.y**2 <= wasp.outerNestRadius**2
         if wasp.id in planned:
             matched = tuple(wasp.getPosition()) == planned.pop(wasp.id)
             stats["planned_moves_followed" if matched else "planned_moves_altered"] += 1
@@ -174,7 +179,8 @@ def main():
                                        "pathfinding.py", "metrics.py", "smoke_test.py")},
         "dependencies": {name: importlib.metadata.version(name)
                          for name in ("numpy", "networkx", "pandas")},
-        "known_limitations": ["Planned steps can be altered by existing collision handling",
+        "known_limitations": ["Movement is sequential with adult-cell exclusion; diagonal segment crossings are allowed",
+                              "Planned steps can be altered by collision handling",
                               "No performance or biological validation claims"],
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

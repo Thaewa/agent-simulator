@@ -332,7 +332,7 @@ class instanceGenerator:
         # Filter indices from the grid that are in the outer nest and not in the inner nest
         outer_nest_indices = np.where(
             in_circle(grid[:, 0], grid[:, 1], radius_nest)
-            & outside_circle(grid[:, 0], grid[:, 1], radius_inner_nest)
+            & ~in_circle(grid[:, 0], grid[:, 1], radius_inner_nest)
         )[0]
         # From the indices of the grid that belong to the outer nest, randomly sample positions for the outer nest larvae
         chosen_nest_indices_larvaes = np.random.choice(
@@ -462,6 +462,8 @@ class Simulator:
         :return: ``None``.
         :rtype: None
         """
+        if agent.id in self.movementHistory:
+            raise ValueError(f"Agent ID {agent.id!r} is already used in this simulation")
         self.agents.append(agent)
         self.movementHistory[agent.id] = [agent.getPosition()]
 
@@ -603,9 +605,9 @@ class Simulator:
 
     def createGrid(self, padding: int = 3) -> None:
         """
-        Create a grid covering the bounding box of current agent positions.
+        Create a movement-resolution grid covering agents and forage sites.
 
-        The grid is stored as a flattened ``(N, 2)`` array of integer coordinates.
+        The grid is stored as a flattened ``(N, 2)`` array of lattice coordinates.
         Gradient arrays are initialized (zeros) for each :class:`WaspRole`.
 
         :param padding: Extra cells to include around the bounding box.
@@ -615,15 +617,19 @@ class Simulator:
         """
 
         # Create the grid obtaining the minimum and maximum position per coordinate over all the agents
-        positions_dict = {"x": [agent.x for agent in self.agents], "y": [agent.y for agent in self.agents]}
-        xmin = min(positions_dict["x"])
-        xmax = max(positions_dict["x"])
-        ymin = min(positions_dict["y"])
-        ymax = max(positions_dict["y"])
-
+        positions = [agent.getPosition() for agent in self.agents] + list(self.forage)
+        if not positions:
+            self.grid = np.empty((0, 2))
+            self.clearGradients()
+            return
+        step = min((abs(value) for agent in self.agents if isinstance(agent, Wasp)
+                    for value in agent.oneStepList if value != 0), default=0.5)
+        positions = np.asarray(positions)
+        lower = np.floor((positions.min(axis=0) - padding) / step).astype(int)
+        upper = np.ceil((positions.max(axis=0) + padding) / step).astype(int)
         x, y = np.meshgrid(
-            np.arange(xmin - padding, xmax + padding + 1),
-            np.arange(ymin - padding, ymax + padding + 1),
+            np.arange(lower[0], upper[0] + 1) * step,
+            np.arange(lower[1], upper[1] + 1) * step,
         )
         self.grid = np.concatenate((x.reshape(-1, 1), y.reshape(-1, 1)), axis=1)
         # Initialize gradients by role
@@ -1008,7 +1014,7 @@ class Simulator:
         """
         wasp_agents = [a for a in self.agents if isinstance(a, Wasp)]
         agent_next_positions = np.array(
-            [[wasp.x + wasp.next_step["x"], wasp.y + wasp.next_step["y"]] for wasp in wasp_agents if wasp != agent]
+            [wasp.getPosition() for wasp in wasp_agents if wasp is not agent]
         )
         # Move the agent using the previously stored next_step dictionary and other agents information to prevent blocking behavior
         agent.move(agent_next_positions, self.grid)

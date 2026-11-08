@@ -127,8 +127,19 @@ Probability correction and exclusion of self trials change random-stream consump
 
 Validation: all 78 tests pass and the five-mode seeded smoke check passes. A separate two-step generated-nest run checks the complete plotting pipeline; this is not a new 500-step comparison. No movement, feeding, role-switch or random-draw rule was changed in this step.
 
+## Step 9: movement validity, collision exclusion and disjoint nest regions
+
+- Correct grid membership, preserve explicit zero actions, validate allowed displacements, and bound fallback attempts with a safe stay action.
+- Use actual adult occupancy during sequential movement, preventing transient overlap and swaps; document fixed-order priority and the allowance of diagonal segment crossings.
+- Align feeder movement and TSP graph masks with the closed nest boundary, exclude inactive graph nodes, and ignore exterior feeder targets.
+- Create default grids at movement resolution covering forage sites as well as agents. Reject invalid origins and reused agent IDs.
+- Make generated inner/outer sampling regions disjoint to prevent boundary duplicates. This changes initialization sampling; old/new seed equality alone does not establish map equality.
+- Add movement-model metadata to experiment manifests and runtime geometry assertions to smoke and generated-nest runners. Definitions and modeling limits are in docs/movement.md.
+
+Validation: all 98 tests pass. New cases cover membership, stay, bounds, retries, non-finite actions, occupied origins, swaps, contested cells, half-cell default grids, masked TSP routes, exterior targets and unique generated populations across 20 seeds. The five-mode seeded smoke check replays identically with geometry assertions and unchanged baseline logs. A two-step generated-nest runner check also passes in a temporary output directory. No new 500-step run was performed for this checkpoint.
+
 ## Required next steps before interpreting algorithm performance
 
-1. Review remaining collision behavior and run-state identity/geometry edge cases before interpreting algorithm performance.
-2. Rerun generated nests after completing that audit checkpoint. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate the role, feeding-probability and metric fixes.
+1. Audit effective configuration parameters, especially larval hunger-rate assignment and hunger multiplier selection, before claiming the model follows its configured biology.
+2. Rerun generated nests after completing that audit checkpoint. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate the role, feeding-probability, metric and movement fixes.
 3. Use multiple independent seeds and controlled historical replays for performance comparisons. Current single-seed plots are exploratory.
