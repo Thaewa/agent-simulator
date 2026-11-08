@@ -378,7 +378,7 @@ class Simulator:
     :type max_role_changes: int
     :param role_changes_frequency: Frequency at which role changes are considered.
     :type role_changes_frequency: int
-    :param number_of_bouts: Number of feeding bouts to simulate per simulation run.
+    :param number_of_bouts: Legacy inactive stopping option; not a biological bout horizon.
     :type number_of_bouts: int
     
     **Attributes initialized in ``__init__``**
@@ -401,7 +401,7 @@ class Simulator:
     :vartype max_role_changes: int
     :ivar role_changes_frequency: Steps between role reassessment opportunities.
     :vartype role_changes_frequency: int
-    :ivar number_of_bouts: Number of feeding bouts to simulate per simulation run.
+    :ivar number_of_bouts: Legacy inactive option; runs stop at the step horizon.
     :vartype number_of_bouts: int
     """
 
@@ -426,6 +426,7 @@ class Simulator:
         self.finished_bouts: int = 0
 
     def stratify_active_bouts(self):
+        """Update legacy transfer groups; these are not field-defined bout IDs."""
         
         forager_to_feeder_bouts_foragers = [bout.feeder for bout in self.recent_feeding_events]
         forager_to_feeder_bouts_feeders = [bout.receiver for bout in self.recent_feeding_events]
@@ -440,6 +441,7 @@ class Simulator:
         self.recent_feeding_events = []
 
     def count_bouts(self):
+        """Count legacy food-threshold episodes, not biological feeding bouts."""
         if self.active_bouts != {}:
             leading_wasps = list(self.active_bouts.keys())
             for wasp in leading_wasps:
@@ -453,8 +455,16 @@ class Simulator:
                         self.finished_bouts += 1
                         self.active_bouts = {}
                         self.recent_feeding_events = []
-                        print("finished bout",self.finished_bouts)
+                        print("finished legacy food-threshold proxy",self.finished_bouts)
                         return                    
+
+    def bout_metadata(self):
+        """Prevent a legacy internal counter from being reported as field bouts."""
+        return {
+            "bout_count_semantics": "legacy_food_threshold_proxy_v1",
+            "biological_bout_status": "unavailable",
+            "legacy_bout_proxy_count": self.finished_bouts,
+        }
                 
     def addAgent(self, agent: Agent) -> None:
         """
@@ -912,6 +922,7 @@ class Simulator:
         }
 
         results.update(summarize_agents(wasps, larvae, t))
+        results.update(self.bout_metadata())
 
         # safer: use config attached by main.py
         self.logger.log_aggregate(results, getattr(self, "config", {}))

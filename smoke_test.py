@@ -181,6 +181,7 @@ def main():
         "dependencies": {name: importlib.metadata.version(name)
                          for name in ("numpy", "networkx", "pandas")},
         "known_limitations": ["Movement is sequential with adult-cell exclusion; diagonal segment crossings are allowed",
+                              "Biological bouts are unavailable; the legacy bout count is a food-threshold proxy",
                               "Planned steps can be altered by collision handling",
                               "No performance or biological validation claims"],
     }

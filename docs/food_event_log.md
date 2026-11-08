@@ -28,4 +28,6 @@ Tests cover multi-recipient events, no-event steps, no-op attempts, partial quan
 
 The journal deliberately has no biological bout ID. It does not track food provenance through onward transfers, forager arrivals, inspected/skipped cells, physical time/distance calibration or developmental-stage observations. Consequently it prepares route/event analysis but does not establish equivalence to the manuscript's field protocol. A collection is not automatically a new biological bout.
 
+See bout_definition.md for the distinction between transfer events, the retained legacy food-threshold proxy, and biological feeding bouts. New aggregate results explicitly label the proxy and mark biological bout reconstruction as unavailable.
+
 Event IDs are scoped to a logger run, not globally unique. Normal runners use fresh output folders; when combining appended logs, preserve simulation ID and output identity. An interrupted run may contain action records before that step's state row and must not be treated as a completed experiment.

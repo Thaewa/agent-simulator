@@ -202,6 +202,7 @@ def main():
         "dependencies": {name: importlib.metadata.version(name)
                          for name in ("numpy", "networkx", "pandas", "matplotlib", "PyYAML")},
         "limitations": ["One seed: exploratory run, not a statistical comparison",
+                        "Biological bouts are unavailable; the legacy bout count is a food-threshold proxy",
                         "Feeding, collision, role scheduling and metric semantics still need review",
                         "Matching seeds do not guarantee identical draws across different policies"],
         "results": {},

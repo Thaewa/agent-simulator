@@ -1023,14 +1023,14 @@ class Wasp(Agent):
         idx = np.flatnonzero(masks)
         return idx
 
-    def feedNearby(self, agents: List[Agent],t) -> List["FeedingBout"]:
+    def feedNearby(self, agents: List[Agent],t) -> List["FoodTransferEvent"]:
         """
         Attempt to feed nearby agents according to ``chanceOfFeeding`` and their hunger.
 
         :param agents: Candidate agents to consider for feeding.
         :type agents: List[Agent]
-        :return: Successful forager-to-feeder transfer bouts.
-        :rtype: List[FeedingBout]
+        :return: Successful forager-to-feeder transfer events, not complete biological bouts.
+        :rtype: List[FoodTransferEvent]
         """
         # Self is not a receiver and must not consume a feeding trial.
         agents = [agent for agent in agents if agent is not self]
@@ -1049,10 +1049,10 @@ class Wasp(Agent):
                     if (amount > 0 and self.role == WaspRole.FORAGER
                             and isinstance(agents[id], Wasp)
                             and agents[id].role == WaspRole.FEEDER):
-                        bout = FeedingBout(self, agents[id], t, amount)
+                        bout = FoodTransferEvent(self, agents[id], t, amount)
                         feeding_bouts.append(bout)
         return feeding_bouts
-    def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> List["FeedingBout"]:
+    def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> List["FoodTransferEvent"]:
         """
         Advance the wasp's state by one simulation step.
 
@@ -1065,8 +1065,8 @@ class Wasp(Agent):
         :type agents: List[Agent] | None
         :param forage: Optional list of foraging point coordinates.
         :type forage: List[tuple[float, float]] | None
-        :return: Successful forager-to-feeder transfer bouts.
-        :rtype: List[FeedingBout]
+        :return: Successful forager-to-feeder transfer events, not complete biological bouts.
+        :rtype: List[FoodTransferEvent]
         """
         # Collect all wasps, all feeders and all larvae
         agents = agents or []
@@ -1179,9 +1179,22 @@ class Larvae(Agent):
         """
         self.storedEvents.append(f"{self.id} asked for food at time {t}")
 
-class FeedingBout():
+class FoodTransferEvent:
+    """One successful forager-to-feeder transfer, not a biological feeding episode.
+
+    ``feeder`` is the historical donor field/constructor argument retained for
+    compatibility. Use ``donor`` when reading new code.
+    """
     def __init__(self,feeder,receiver,t, amount=0.0):
         self.feeder = feeder
         self.receiver = receiver
         self.timestamp = t
         self.amount = amount
+
+    @property
+    def donor(self):
+        return self.feeder
+
+
+# Compatibility for historical imports and constructor calls.
+FeedingBout = FoodTransferEvent

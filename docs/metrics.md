@@ -22,6 +22,8 @@ Metrics assume a fresh simulator instance for each run. One step is a discrete s
 
 The distance-per-event metric is a colony-level travel cost proxy. It does not claim every movement was caused by that event type. A zero event denominator is undefined, not zero travel cost. Undefined quantities are NaN/empty numerical CSV values and JSON null in experiment manifests.
 
+New aggregates also carry `bout_count_semantics=legacy_food_threshold_proxy_v1`, `biological_bout_status=unavailable`, and `legacy_bout_proxy_count`. The latter is the retained internal threshold counter, not the number of empirical feeding bouts; see bout_definition.md. These additive annotations do not change activity_roles_v2 numerical definitions.
+
 ## Role attribution
 
 Each adult now records feeder step exposure, feeder travel distance and larval feed events at the time those activities occur. Changes to its final role do not remove its earlier feeder activity or add its forager activity to feeder totals.
