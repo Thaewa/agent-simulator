@@ -152,3 +152,19 @@ Validation: all 106 tests pass; seeded smoke checks pass; a three-step generated
 1. Run a short generated-nest checkpoint with the newly effective configuration and inspect hunger versus food supply. Do not tune parameters just to recover historical graph shapes.
 2. Establish empirical parameter calibration and the real-nest/field-statistics comparison with the advisor. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate these audits.
 3. Use multiple independent seeds and controlled historical replays for performance comparisons. Current single-seed plots are exploratory.
+
+## Step 11: successful-food-event journal
+
+- Add a separate `food_events_v1` CSV for every successful collection, adult transfer and larval feed. Preserve actual amounts, actor/recipient identities, event-time roles/positions, collection source and deterministic within-step ordering.
+- Capture actions immediately rather than recovering them from the last legacy event string or end-of-step state. Do not alter existing state/aggregate column meanings; larval `food_received` remains food storage.
+- Scope event capture to adult action execution and restore the prior sink even on exceptions. No decision rule or RNG call was added. The new inactive sink field is null in initial-instance snapshots.
+- Reconcile journal counts against every step's nest counters in smoke and experiment runners; existing checks reconcile nest counts with aggregate totals. Seeded smoke replay also hashes event CSVs.
+- Document schema and interpretation limits in food_event_log.md. Biological bouts, food provenance, real nest maps, physical units and field validation are not implemented by this change.
+
+Validation: all 115 tests pass. Nine new tests cover lossless multi-recipient logging, idle/no-op steps, event-time snapshots, partial transfer/refill quantities, within-step ordering, sink restoration, missing-event detection and five-mode logging-on/off state/counter/RNG equivalence. All five seeded smoke modes pass with identical replay logs and unchanged baseline logs.
+
+A direct comparison against pre-journal commit `54555c3` in isolated source directories, with seed 20261108 and PYTHONHASHSEED=0, produced byte-identical adult, larval and nest CSVs for all five modes over 20 steps. This checks the journal addition, not the historical TSP bug.
+
+The generated-nest 50-step checkpoint completed all five modes and generated 19 PNG figures at `exports/experiments/seed_20261108_20261108T075309_742555Z`. All 15 state CSVs are byte-identical to the pre-journal 50-step run `seed_20261108_20261108T051007_371772Z`. Initial JSON differs only by 30 added inactive `_food_event_sink: null` adult fields. The checkpoint's source snapshot records uncommitted implementation files, so its captured hashes, rather than its pre-change HEAD alone, identify the code used.
+
+The short single-seed experiment remains software validation. It does not establish policy rankings, empirical calibration or equivalence to the revised biological manuscript. The outstanding research inputs and measurement gaps are in research_alignment.md, empirical_data_inventory.md and field_measurement_audit.md.

@@ -348,6 +348,12 @@ class Wasp(Agent):
         self.feeder_step_count = 0
         self.feeder_distance_traveled = 0.0
         self.feeder_feed_count_larvae = 0
+        # Bound only while the simulator executes this adult's actions.
+        self._food_event_sink = None
+
+    def _record_food_event(self, event_type, amount, recipient=None, source_position=None):
+        if self._food_event_sink is not None:
+            self._food_event_sink(event_type, self, recipient, float(amount), source_position)
         
     @property
     def path_finding(self) -> str:
@@ -417,6 +423,7 @@ class Wasp(Agent):
         wasp.hunger = self.noHunger
         self.feed_count_wasp += 1 
         self.storedEvents.append(f"{self.id} fed {wasp.id} (transfer)")
+        self._record_food_event("adult_transfer", amount, recipient=wasp)
         return float(amount)
 
     def feedLarvae(self, larvae: Agent, passed_food: int) -> float:
@@ -442,6 +449,7 @@ class Wasp(Agent):
         if self.role == WaspRole.FEEDER:
             self.feeder_feed_count_larvae += 1
         self.storedEvents.append(f"{self.id} fed {larvae.id}")
+        self._record_food_event("larval_feed", passed_food, recipient=larvae)
         return float(passed_food)
 
     def feed(self, target: Agent) -> float:
@@ -505,12 +513,14 @@ class Wasp(Agent):
             for id in idx:
                 # If the forager wasp is not full and a random draw is less than the chance of foraging realize the forage
                 if self.food < self.maxFood and self.forageIncrease > 0 and np.random.rand() < self.chanceOfForaging:
-                    self.food += min(self.forageIncrease, self.maxFood - self.food)
+                    amount = min(self.forageIncrease, self.maxFood - self.food)
+                    self.food += amount
                     self.forage_count += 1
                     self.hunger = self.noHunger
                     self.storedEvents.append(
                         f"{self.id} is in location {self.getPosition()} and foraged food at location {forage[id]}"
                     )
+                    self._record_food_event("collection", amount, source_position=forage[id])
     def inOuterNest(self) -> bool:
         """
         Check if the next position remains inside the outer nest radius.

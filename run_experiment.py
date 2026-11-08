@@ -22,7 +22,7 @@ import pandas as pd
 import yaml
 
 from agents import Larvae, Wasp, WaspRole
-from logger import DataLogger
+from logger import DataLogger, validate_food_event_log
 from pathfinding import PATHFINDING_MODES
 from simulator import Simulator, instanceGenerator
 
@@ -143,6 +143,7 @@ def run_mode(base, config, mode, seed, steps, output, console):
             simulator.logger = DataLogger(mode, simulation_id=1, output_dir=output / "output_logs")
             simulator.runSimulation(steps)
     assert simulator.currentTime == steps
+    validate_food_event_log(simulator.logger)
     nest = pd.read_csv(output / "output_logs" / mode / f"nest_log_{mode}.csv")
     assert nest.timestamp.tolist() == list(range(steps + 1)), "Invalid nest timestamps"
     for agent in simulator.agents:

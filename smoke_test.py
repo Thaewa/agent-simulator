@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from agents import Larvae, Wasp, WaspRole
-from logger import DataLogger
+from logger import DataLogger, validate_food_event_log
 from pathfinding import PATHFINDING_MODES
 from simulator import Simulator
 
@@ -122,7 +122,7 @@ def run_case(mode, output):
         assert stats["route_requests"] == 0
     if mode == "tsp-hamiltonian":
         assert stats["closed_routes_built"] > 0
-    # Compare state logs, excluding aggregate wall-clock recording timestamps.
+    # Compare state and food-event logs, excluding aggregate wall-clock timestamps.
     stats["state_log_hashes"] = {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
         for p in sorted((output / mode).glob("*_log_*.csv"))
@@ -131,6 +131,7 @@ def run_case(mode, output):
     stats["duplicate_timestamps"] = int(nest.timestamp.duplicated().sum())
     assert nest.timestamp.tolist() == list(range(STEPS + 1))
     assert stats["duplicate_timestamps"] == 0
+    validate_food_event_log(sim.logger)
     aggregate = pd.read_csv(output / mode / f"aggregate_results_{mode}.csv").iloc[0]
     for column, total in (("feeding_events", "total_larval_feeding_events"),
                           ("transfer_events", "total_adult_transfer_events"),

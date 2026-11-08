@@ -788,7 +788,12 @@ class Simulator:
                 if isinstance(agent, Wasp):
                     # Step the chosen agent only if it is a wasp, larvae agents are passive. The step per agent
                     # considers defining the next step, feeding and foraging
-                    self.stepAgent(agent, wasps, larvaes_position)
+                    previous_sink = agent._food_event_sink
+                    agent._food_event_sink = lambda *args: self.logger.log_food_event(self.currentTime, *args)
+                    try:
+                        self.stepAgent(agent, wasps, larvaes_position)
+                    finally:
+                        agent._food_event_sink = previous_sink
                 j += 1
 
             j = 0

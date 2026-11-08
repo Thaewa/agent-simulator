@@ -51,4 +51,4 @@ Validation required for that step:
 4. Journal counts reconcile with existing per-step and lifetime totals for each event type.
 5. With the same seed and instance, adding the journal leaves modeled states and behavior unchanged; repeat runs produce identical event records after excluding output-directory metadata.
 
-No journal code is implemented in this audit commit. Real-map import, biological bout reconstruction, field-unit calibration, null-route analysis and RL training remain separate steps. Collection records alone will not resolve food provenance through onward transfers or establish a biological bout.
+At the time of this audit commit no journal code was implemented. The subsequent implementation is documented in food_event_log.md. Real-map import, biological bout reconstruction, field-unit calibration, null-route analysis and RL training remain separate steps. Collection records alone will not resolve food provenance through onward transfers or establish a biological bout.
