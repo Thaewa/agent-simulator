@@ -53,3 +53,5 @@ The local manuscript provides no verified conversion from simulation steps/grid 
 5. What access, attribution and publication-use conditions apply to shared data?
 
 These are prepared questions; no email has been sent. Next implementation should follow the agreed data representation and endpoints. Do not manufacture empirical inputs from plots or tune synthetic hunger to match historical figures.
+
+The subsequent code-to-measurement comparison and proposed logging prerequisite are documented in field_measurement_audit.md.
