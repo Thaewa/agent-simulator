@@ -87,7 +87,7 @@ class TestFoodLimits(unittest.TestCase):
     def test_last_complete_ration_can_be_fed_in_normal_step(self):
         donor = self.wasp(food=1)
         larva = Larvae("larva", 0, 0, hunger=3)
-        with patch("agents.random.random", return_value=0.99):
+        with patch("agents.random.random", return_value=0):
             donor.step(t=1, agents=[donor, larva], forage=[])
         self.assertEqual((donor.food, larva.food, donor.feed_count_larvae), (0, 1, 1))
 

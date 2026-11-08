@@ -101,8 +101,23 @@ Implemented after the user pushed checkpoint `43417c9` to `fix/tsp-validation`:
 
 Validation: 12 new role tests reproduce clock, probability, quota, boundary, cooldown and role-log inconsistencies before the fixes. All 55 tests pass after the changes; the five-mode 20-step seeded smoke check passes with identical repeat logs and unchanged baseline files. No 500-step rerun was performed for this step. The short smoke check itself does not reach the default step-100 reassessment; dedicated integration tests use a two-step frequency to exercise the actual simulation call and state logging.
 
+## Step 7: successful feeding events and per-step counts
+
+Implemented after role-switch checkpoint `ef74858`:
+
+- Interpret `chanceOfFeeding` as the probability of an attempted feed for a nearby hungry recipient (`draw < probability`), replacing the inverted comparison. Actual success still depends on food, capacity and the existing unloading rule.
+- Feeding methods return the actual quantity transferred, or zero for a failed/no-op attempt. Feeding bouts are created only for successful forager-to-feeder adult transfers and include that quantity. Larval feeds and failed transfers do not enter adult-transfer bout accounting.
+- Exclude the donor from nearby recipients before consuming random draws. Return an empty list for no receivers, preventing None from reaching the simulator's feeding-event list extension. Empty forage-site lists are also harmless.
+- Track successful collection events with a numeric counter. Nest log foraging/larval-feeding/adult-transfer fields are counter deltas for the current step, rather than cumulative string searches over all history. Initialization records zero events.
+- Add all-adult lifetime totals under `total_larval_feeding_events`, `total_adult_transfer_events`, and `total_foraging_events`. The aggregate marker `nest_event_count_semantics=per_step_successes` distinguishes new nest logs from historical cumulative event counts.
+- Smoke and experiment runners assert that summed per-step nest event counts agree with aggregate lifetime totals.
+
+Validation: 12 new tests cover probability endpoints/thresholds, empty recipients, self exclusion, failed/partial transfers, rejected unloading, adult-versus-larval bout classification and all three step-count totals. All 67 tests pass, and the five-mode seeded smoke check replays identically with unchanged baseline logs. No full 500-step rerun was performed for this step.
+
+Probability correction and exclusion of self trials change random-stream consumption and feeding dynamics. Historical graphs must not be relabeled as post-fix results. The existing feeding-efficiency and final-role aggregate formulas have not yet been redefined in this step.
+
 ## Required next steps before interpreting algorithm performance
 
-1. Review feeding-event accounting/probability, collision and metric semantics independently of route construction. A no-recipient feedNearby call currently returns None, which can break feeding-event list extension if an edge-case scene has no feeders; this is pending a separate feeding audit.
-2. Rerun generated nests after completing the next audit checkpoint. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate the role fixes.
+1. Define and test aggregate/plot metric semantics: current "frequency" values are lifetime counts per wasp; frequency plotting uses the standard deviation of within-run standard deviations; some metrics select final-role agents but use lifetime counters; feeding_efficiency is a final hunger-threshold fraction; normalized distance applies an extra population divisor. These require a separate metrics checkpoint rather than silently changing definitions.
+2. Review remaining collision behavior and rerun generated nests after completing the next audit checkpoint. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate the role and feeding-probability fixes.
 3. Use multiple independent seeds and controlled historical replays for performance comparisons. Current single-seed plots are exploratory.

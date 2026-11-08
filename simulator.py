@@ -757,6 +757,13 @@ class Simulator:
             # Zero belongs only to initialization. Actions and resulting state
             # for step i + 1 must share that step's timestamp in every log.
             self.currentTime += 1
+            # Snapshot successful-event counters before this step. Nest logs
+            # report step counts; lifetime totals are recorded in aggregates.
+            events_before = (
+                sum(w.forage_count for w in wasps),
+                sum(w.feed_count_larvae for w in wasps),
+                sum(w.feed_count_wasp for w in wasps),
+            )
             if i % 10 == 0:
                 hungerCue = np.mean([ getattr(agent, "hungerCue", 0) for agent in self.agents if isinstance(agent, Wasp) ])
                 larvaeHunger = np.mean([ getattr(agent, "hunger", 0) for agent in self.agents if isinstance(agent, Larvae)])        
@@ -819,9 +826,9 @@ class Simulator:
                 timestamp=self.currentTime,
                 total_foragers=len([a for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FORAGER]),
                 total_feeders=len([a for a in self.agents if isinstance(a, Wasp) and a.role == WaspRole.FEEDER]),
-                foraging_events=sum("foraged" in e for a in self.agents for e in getattr(a, "storedEvents", [])),
-                feeding_events=sum("fed" in e and "transfer" not in e for a in self.agents for e in getattr(a, "storedEvents", [])),
-                transfer_events=sum("transfer" in e for a in self.agents for e in getattr(a, "storedEvents", [])),
+                foraging_events=sum(w.forage_count for w in wasps) - events_before[0],
+                feeding_events=sum(w.feed_count_larvae for w in wasps) - events_before[1],
+                transfer_events=sum(w.feed_count_wasp for w in wasps) - events_before[2],
                 avg_hunger_foragers=self._calc_avg_hunger(WaspRole.FORAGER),
                 avg_hunger_feeders=self._calc_avg_hunger(WaspRole.FEEDER),
                 avg_hunger_larvae=self._calc_avg_hunger(AgentType.LARVAE),
@@ -898,6 +905,10 @@ class Simulator:
             "num_wasps": num_wasps,
             "num_larvae": num_larvae,
             "wasp_to_larvae_ratio": wasp_to_larvae_ratio,
+            "total_larval_feeding_events": sum(w.feed_count_larvae for w in wasps),
+            "total_adult_transfer_events": sum(w.feed_count_wasp for w in wasps),
+            "total_foraging_events": sum(w.forage_count for w in wasps),
+            "nest_event_count_semantics": "per_step_successes",
         }
 
         # --- Additional Feeder metrics ---

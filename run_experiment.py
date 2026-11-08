@@ -123,6 +123,10 @@ def run_mode(base, config, mode, seed, steps, output, console):
         rows = agents[agents.agent_id == wasp.id]
         assert rows.food_stored.between(0, wasp.maxFood + 1e-9).all(), f"Food outside capacity for {wasp.id}"
     aggregate = pd.read_csv(output / "output_logs" / mode / f"aggregate_results_{mode}.csv")
+    for column, total in (("feeding_events", "total_larval_feeding_events"),
+                          ("transfer_events", "total_adult_transfer_events"),
+                          ("foraging_events", "total_foraging_events")):
+        assert nest[column].sum() == aggregate.iloc[0][total], f"Event totals disagree: {column}"
     return {**counters, **aggregate.iloc[0].to_dict()}
 
 

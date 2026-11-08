@@ -340,6 +340,7 @@ class Wasp(Agent):
         self.distance_traveled = 0.0 # <---- Newly added
         self.feed_count_larvae = 0 # <---- Newly added
         self.feed_count_wasp = 0 # <---- Newly added
+        self.forage_count = 0
         self.hunger_cue = 0.0 # <---- # stores latest hunger cue sensed
         self.step_count = 0  # <---- New field
         
@@ -384,7 +385,7 @@ class Wasp(Agent):
         self.maxHungerCue = updates if self.maxHungerCue < updates else self.maxHungerCue
 
     # Extra methods
-    def feedWasp(self, wasp: Agent, passed_food: int) -> None:
+    def feedWasp(self, wasp: Agent, passed_food: int) -> float:
         """
         Transfer up to the requested food, limited by recipient capacity.
 
@@ -392,14 +393,14 @@ class Wasp(Agent):
         :type wasp: Agent
         :param passed_food: Units of food to transfer.
         :type passed_food: int
-        :return: ``None``.
-        :rtype: None
+        :return: Amount transferred, or zero if no transfer occurred.
+        :rtype: float
         """
         if wasp is self or passed_food <= 0 or self.food < passed_food:
-            return
+            return 0.0
         amount = min(passed_food, max(0, wasp.maxFood - wasp.food))
         if amount <= 0:
-            return
+            return 0.0
         # When wasps interact they also exchange information of their local hunger cues 
         if wasp.hungerCue > 0.0:
             self.hungerCue = (self.hungerCue + wasp.hungerCue) / 2
@@ -411,7 +412,9 @@ class Wasp(Agent):
         wasp.hunger = self.noHunger
         self.feed_count_wasp += 1 
         self.storedEvents.append(f"{self.id} fed {wasp.id} (transfer)")
-    def feedLarvae(self, larvae: Agent, passed_food: int) -> None:
+        return float(amount)
+
+    def feedLarvae(self, larvae: Agent, passed_food: int) -> float:
         """
         Transfer food to a larva and reset its hunger.
 
@@ -419,11 +422,11 @@ class Wasp(Agent):
         :type larvae: Agent
         :param passed_food: Units of food to transfer.
         :type passed_food: int
-        :return: ``None``.
-        :rtype: None
+        :return: Amount transferred, or zero if no transfer occurred.
+        :rtype: float
         """
         if passed_food <= 0 or self.food < passed_food:
-            return
+            return 0.0
         # Update local food storage
         self.food -= passed_food
         # Update target larva
@@ -432,8 +435,9 @@ class Wasp(Agent):
         larvae.hunger = larvae.noHunger
         self.feed_count_larvae += 1
         self.storedEvents.append(f"{self.id} fed {larvae.id}")
+        return float(passed_food)
 
-    def feed(self, target: Agent) -> None:
+    def feed(self, target: Agent) -> float:
         """
         Feed an agent by transferring a unit of food (if available).
 
@@ -443,8 +447,8 @@ class Wasp(Agent):
 
         :param target: The agent to feed.
         :type target: Agent
-        :return: ``None``.
-        :rtype: None
+        :return: Amount transferred, or zero if feeding did not succeed.
+        :rtype: float
         """
         # Define the amount of food to transfer given the target type
         passed_food = self.foodTransferToLarvae if target.type == AgentType.LARVAE else self.foodTransferToWasp
@@ -455,21 +459,22 @@ class Wasp(Agent):
                 if isinstance(target, Larvae):
                     # If the target is a larva and the hunger cues are high it is unlikely that the larvae will be feeded
                     if np.random.rand() < self.unloadOnlyChance:
-                        self.feedLarvae(target, passed_food)
+                        return self.feedLarvae(target, passed_food)
                 else:
                     # If the target is a wasp and the hunger cues are high it is likely that the wasp will be feeded
-                    self.feedWasp(target, passed_food)
+                    return self.feedWasp(target, passed_food)
             else:
                 if isinstance(target, Larvae):
                     # Feeders and foragers feed larvae if hunger cues are not high
-                    self.feedLarvae(target, passed_food)
+                    return self.feedLarvae(target, passed_food)
                 else:
                     # The transfer method enforces the recipient's capacity.
-                    self.feedWasp(target, passed_food)
+                    return self.feedWasp(target, passed_food)
         else:
             self.storedEvents.append(
                 f"{self.id} tried to feed {target.id} but had no food"
             )
+        return 0.0
                     
     def forage(self, forage: List[np.ndarray]) -> None:
         """
@@ -484,6 +489,8 @@ class Wasp(Agent):
         :return: ``None``.
         :rtype: None
         """
+        if len(forage) == 0:
+            return
         forage = np.array(forage)
         # Collect the positions of foraging nearby the wasp
         idx = self.nearbyEntity(forage)
@@ -492,6 +499,7 @@ class Wasp(Agent):
                 # If the forager wasp is not full and a random draw is less than the chance of foraging realize the forage
                 if self.food < self.maxFood and self.forageIncrease > 0 and np.random.rand() < self.chanceOfForaging:
                     self.food += min(self.forageIncrease, self.maxFood - self.food)
+                    self.forage_count += 1
                     self.hunger = self.noHunger
                     self.storedEvents.append(
                         f"{self.id} is in location {self.getPosition()} and foraged food at location {forage[id]}"
@@ -1001,18 +1009,19 @@ class Wasp(Agent):
         idx = np.flatnonzero(masks)
         return idx
 
-    def feedNearby(self, agents: List[Agent],t) -> None:
+    def feedNearby(self, agents: List[Agent],t) -> List["FeedingBout"]:
         """
         Attempt to feed nearby agents according to ``chanceOfFeeding`` and their hunger.
 
         :param agents: Candidate agents to consider for feeding.
         :type agents: List[Agent]
-        :return: ``None``.
-        :rtype: None
+        :return: Successful forager-to-feeder transfer bouts.
+        :rtype: List[FeedingBout]
         """
-        # If there aren't any agents return
+        # Self is not a receiver and must not consume a feeding trial.
+        agents = [agent for agent in agents if agent is not self]
         if not agents:
-            return
+            return []
         # If there are agents that can be feed, obtain their positions
         agents_position = np.array([agent.getPosition() for agent in agents])
         # Filter agents by distance and keep those that are nearby
@@ -1021,13 +1030,15 @@ class Wasp(Agent):
         if idx.shape[0] > 0:
             for id in idx:
                 # If the wasp is not full and a random draw is less than the chance of foraging realize the feed
-                if random.random() > self.chanceOfFeeding and agents[id].hunger > 1.2 and self.food > 0:
-                    self.feed(agents[id])
-                    if self.role == WaspRole.FORAGER:
-                        bout = FeedingBout(self, agents[id],t)
+                if random.random() < self.chanceOfFeeding and agents[id].hunger > 1.2 and self.food > 0:
+                    amount = self.feed(agents[id])
+                    if (amount > 0 and self.role == WaspRole.FORAGER
+                            and isinstance(agents[id], Wasp)
+                            and agents[id].role == WaspRole.FEEDER):
+                        bout = FeedingBout(self, agents[id], t, amount)
                         feeding_bouts.append(bout)
         return feeding_bouts
-    def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> None:
+    def step(self, t: int = None, agents: List[Agent] = None, forage=None) -> List["FeedingBout"]:
         """
         Advance the wasp's state by one simulation step.
 
@@ -1040,14 +1051,16 @@ class Wasp(Agent):
         :type agents: List[Agent] | None
         :param forage: Optional list of foraging point coordinates.
         :type forage: List[tuple[float, float]] | None
-        :return: ``None``.
-        :rtype: None
+        :return: Successful forager-to-feeder transfer bouts.
+        :rtype: List[FeedingBout]
         """
         # Collect all wasps, all feeders and all larvae
+        agents = agents or []
         wasps = [agent for agent in agents if agent.type == AgentType.WASP]
         wasps_feeders = [wasp for wasp in wasps if wasp.role == WaspRole.FEEDER]
         larvaes = [agent for agent in agents if agent.type == AgentType.LARVAE]
         net_receivers = wasps_feeders + larvaes
+        feed_events = []
         
         # If agent has food
         if self.food > 0:
@@ -1151,7 +1164,8 @@ class Larvae(Agent):
         self.storedEvents.append(f"{self.id} asked for food at time {t}")
 
 class FeedingBout():
-    def __init__(self,feeder,receiver,t):
+    def __init__(self,feeder,receiver,t, amount=0.0):
         self.feeder = feeder
         self.receiver = receiver
         self.timestamp = t
+        self.amount = amount

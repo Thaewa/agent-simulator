@@ -126,6 +126,11 @@ def run_case(mode, output):
     stats["duplicate_timestamps"] = int(nest.timestamp.duplicated().sum())
     assert nest.timestamp.tolist() == list(range(STEPS + 1))
     assert stats["duplicate_timestamps"] == 0
+    aggregate = pd.read_csv(output / mode / f"aggregate_results_{mode}.csv").iloc[0]
+    for column, total in (("feeding_events", "total_larval_feeding_events"),
+                          ("transfer_events", "total_adult_transfer_events"),
+                          ("foraging_events", "total_foraging_events")):
+        assert nest[column].sum() == aggregate[total]
     larvae = pd.read_csv(output / mode / f"larvae_log_{mode}.csv")
     for _, rows in larvae.groupby("larva_id"):
         assert rows.timestamp.tolist() == list(range(STEPS + 1))
