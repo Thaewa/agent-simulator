@@ -249,3 +249,6 @@ analysis_outputs - backup/
 output_plots_*/
 output_plots_*/**/*.png
 
+# Local correspondence drafts are not project deliverables.
+/docs/advisor_data_request_draft.md
+
