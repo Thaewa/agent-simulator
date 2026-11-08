@@ -8,6 +8,7 @@ from agents import AgentType, WaspRole
 import numpy as np
 from utils import gaussian_attraction, in_circle, outside_circle
 from logger import DataLogger  #Added: Data logging for simulation
+from metrics import summarize_agents, distance_per_event
 import matplotlib.pyplot as plt
 import math
 from collections import defaultdict
@@ -868,15 +869,6 @@ class Simulator:
         wasps = [a for a in self.agents if a.__class__.__name__ == "Wasp"]
         larvae = [a for a in self.agents if a.__class__.__name__ == "Larvae"]
 
-        # Separate feed count tracking
-        feed_counts_wasp = [w.feed_count_wasp for w in wasps if hasattr(w, "feed_count_wasp")] if wasps else []
-        feed_counts_larvae = [w.feed_count_larvae for w in wasps if hasattr(w, "feed_count_larvae")] if wasps else []
-
-        mean_feed_freq_wasp = np.mean(feed_counts_wasp) if feed_counts_wasp else 0
-        std_feed_freq_wasp  = np.std(feed_counts_wasp) if feed_counts_wasp else 0
-        mean_feed_freq_larvae = np.mean(feed_counts_larvae) if feed_counts_larvae else 0
-        std_feed_freq_larvae  = np.std(feed_counts_larvae) if feed_counts_larvae else 0
-
         num_wasps = len(wasps)
         num_larvae = len(larvae)
         wasp_to_larvae_ratio = num_wasps / num_larvae if num_larvae > 0 else 0
@@ -896,12 +888,6 @@ class Simulator:
             "mean_distance_per_feed_wasp": self._calc_distance_per_feed_wasp(),
             "feeding_efficiency": self._calc_feeding_efficiency(),
             
-            # New separate feed stats
-            "mean_feed_freq_wasp": mean_feed_freq_wasp,
-            "std_feed_freq_wasp": std_feed_freq_wasp,
-            "mean_feed_freq_larvae": mean_feed_freq_larvae,
-            "std_feed_freq_larvae": std_feed_freq_larvae,
-
             "num_wasps": num_wasps,
             "num_larvae": num_larvae,
             "wasp_to_larvae_ratio": wasp_to_larvae_ratio,
@@ -911,27 +897,7 @@ class Simulator:
             "nest_event_count_semantics": "per_step_successes",
         }
 
-        # --- Additional Feeder metrics ---
-        wasps = [a for a in self.agents if a.type == AgentType.WASP]
-        feeders = [w for w in wasps if hasattr(w, "role") and str(w.role).endswith("FEEDER")]
-
-        results.update({
-            "sum_distance_traveled_feeders": sum(w.distance_traveled for w in feeders),
-            "sum_feed_count_larvae": sum(w.feed_count_larvae for w in feeders),
-            "avg_distance_traveled_feeders": np.mean([w.distance_traveled for w in feeders]) if feeders else 0,
-            "avg_feed_count_larvae": np.mean([w.feed_count_larvae for w in feeders]) if feeders else 0,
-            "efficiency_walk_feed_ratio": (
-                sum(w.feed_count_larvae for w in feeders) / max(sum(w.distance_traveled for w in feeders), 1e-9)
-            )
-        })
-
-        results.update({
-            "sum_step_count_feeders": sum(getattr(w, "step_count", 0) for w in feeders),
-            "avg_step_count_feeders": np.mean([getattr(w, "step_count", 0) for w in feeders]) if feeders else 0,
-            "efficiency_step_feed_ratio": (
-                sum(w.feed_count_larvae for w in feeders) / max(sum(getattr(w, "step_count", 0) for w in feeders), 1e-9)
-            )
-        })
+        results.update(summarize_agents(wasps, larvae, t))
 
         # safer: use config attached by main.py
         self.logger.log_aggregate(results, getattr(self, "config", {}))
@@ -953,20 +919,12 @@ class Simulator:
     #  Added helper metrics
     # ----------------------------------------------------------------------
     def _calc_distance_per_feed_larvae(self):
-        distances = []
-        for wasp in [a for a in self.agents if a.__class__.__name__ == "Wasp"]:
-            count = getattr(wasp, "feed_count_larvae", 0)
-            if count > 0 and hasattr(wasp, "distance_traveled"):
-                distances.append(wasp.distance_traveled / count)
-        return np.mean(distances) if distances else 0
+        """Total adult distance per successful larval feed, including nonfeeders."""
+        return distance_per_event([a for a in self.agents if isinstance(a, Wasp)], "feed_count_larvae")
 
     def _calc_distance_per_feed_wasp(self):
-        distances = []
-        for wasp in [a for a in self.agents if a.__class__.__name__ == "Wasp"]:
-            count = getattr(wasp, "feed_count_wasp", 0)
-            if count > 0 and hasattr(wasp, "distance_traveled"):
-                distances.append(wasp.distance_traveled / count)
-        return np.mean(distances) if distances else 0
+        """Total adult distance per successful adult transfer."""
+        return distance_per_event([a for a in self.agents if isinstance(a, Wasp)], "feed_count_wasp")
 
     def _calc_feeding_efficiency(self):
         larvae = [a for a in self.agents if a.__class__.__name__ == "Larvae"]

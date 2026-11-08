@@ -49,9 +49,11 @@ def write_json(path, value):
             return [safe(val) for val in item]
         if isinstance(item, (Enum, np.ndarray, np.generic)):
             return safe(json_value(item))
+        if isinstance(item, float) and not np.isfinite(item):
+            return None
         return item
 
-    path.write_text(json.dumps(safe(value), indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(safe(value), indent=2, allow_nan=False) + "\n", encoding="utf-8")
 
 
 def prepare_instance(config, seed):

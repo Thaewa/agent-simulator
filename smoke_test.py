@@ -171,7 +171,7 @@ def main():
         "results": results,
         "source_sha256": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
                           for name in ("agents.py", "simulator.py", "logger.py", "utils.py",
-                                       "pathfinding.py", "smoke_test.py")},
+                                       "pathfinding.py", "metrics.py", "smoke_test.py")},
         "dependencies": {name: importlib.metadata.version(name)
                          for name in ("numpy", "networkx", "pandas")},
         "known_limitations": ["Planned steps can be altered by existing collision handling",

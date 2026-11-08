@@ -343,6 +343,9 @@ class Wasp(Agent):
         self.forage_count = 0
         self.hunger_cue = 0.0 # <---- # stores latest hunger cue sensed
         self.step_count = 0  # <---- New field
+        self.feeder_step_count = 0
+        self.feeder_distance_traveled = 0.0
+        self.feeder_feed_count_larvae = 0
         
     @property
     def path_finding(self) -> str:
@@ -434,6 +437,8 @@ class Wasp(Agent):
         # Reset target larva hunger
         larvae.hunger = larvae.noHunger
         self.feed_count_larvae += 1
+        if self.role == WaspRole.FEEDER:
+            self.feeder_feed_count_larvae += 1
         self.storedEvents.append(f"{self.id} fed {larvae.id}")
         return float(passed_food)
 
@@ -570,6 +575,8 @@ class Wasp(Agent):
         # Generate a movement event
         self._generateMoveEvent()
         self.step_count += 1 # <--- newly added
+        if self.role == WaspRole.FEEDER:
+            self.feeder_step_count += 1
 
     def _generateNewNextStepIfNecessary(self, next_step_array: np.ndarray, grid: np.ndarray) -> None:
         """
@@ -630,7 +637,10 @@ class Wasp(Agent):
         # <--- Newly added: distance traveled ---
         if prev_x is None or prev_y is None: 
             return
-        self.distance_traveled += np.sqrt((self.x - prev_x) ** 2 + (self.y - prev_y) ** 2)
+        distance = np.sqrt((self.x - prev_x) ** 2 + (self.y - prev_y) ** 2)
+        self.distance_traveled += distance
+        if self.role == WaspRole.FEEDER:
+            self.feeder_distance_traveled += distance
 
     def _generateMoveEvent(self) -> None:
         """

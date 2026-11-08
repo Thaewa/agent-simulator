@@ -16,6 +16,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+from metrics import normalize_aggregate, summarize_runs, validate_schema
 
 # ==============================================================
 # SETUP
@@ -57,49 +58,14 @@ def load_csvs(pattern):
             print(f"[WARN] {f}: {e}")
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-def normalize_aggregate(df):
-    """
-    Normalize relevant metrics per number of larvae and wasps.
-    Adds unified normalization fields used by all 7x plots.
-    """
-    if df.empty:
-        return df
-
-    required = {"sum_distance_traveled_feeders", "sum_feed_count_larvae", "sum_step_count_feeders", "num_wasps", "num_larvae"}
-    missing = required - set(df.columns)
-    if missing:
-        print(f"[WARN] normalize_aggregate: Missing columns {missing}")
-        return df
-
-    df = df.copy()
-    df["num_wasps"] = df["num_wasps"].replace(0, np.nan)
-    df["num_larvae"] = df["num_larvae"].replace(0, np.nan)
-    df["sum_step_count_feeders"] = df["sum_step_count_feeders"].replace(0, np.nan)
-
-    # --- Normalized base values ---
-    df["norm_sum_distance"] = df["sum_distance_traveled_feeders"] / df["num_wasps"]
-    df["norm_feed_count"] = df["sum_feed_count_larvae"] / df["num_larvae"]
-    df["norm_steps"] = df["sum_step_count_feeders"] / df["num_wasps"]
-
-    # --- Unified metrics (per wasp per step vs per larva) ---
-    df["distance_per_wasp_per_step"] = df["sum_distance_traveled_feeders"] / (df["num_wasps"] * df["sum_step_count_feeders"])
-    df["feed_per_larva"] = df["sum_feed_count_larvae"] / df["num_larvae"]
-
-    # --- Efficiency ratios ---
-    df["norm_walk_to_feed_eff"] = df["norm_feed_count"] / df["norm_sum_distance"]
-    df["norm_step_to_feed_eff"] = df["norm_feed_count"] / df["norm_steps"]
-
-    return df
-
-
 # ==============================================================
 # PLOTS
 # ==============================================================
 
-def plot_caption():
+def plot_caption(text="Each color corresponds to a distinct pathfinding algorithm."):
     plt.figtext(
         0.5, -0.04,
-        "Each color corresponds to a distinct pathfinding algorithm.",
+        text,
         ha="center", fontsize=8, color="gray"
     )
 
@@ -144,7 +110,7 @@ def plot_larvae_distance_vs_hunger():
     # fig = plt.figure(figsize=(12, 15))
     # fig, ax = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
     import seaborn as sns
-    grp = df.groupby(["__mode__","larva_id"]).agg(
+    grp = df.groupby(["__mode__", "simulation_id", "larva_id", "position_x", "position_y"]).agg(
             mean_hunger=("hunger_level", "mean"),
             min_hunger=("hunger_level", "min"),
             max_hunger=("hunger_level", "max"),
@@ -275,105 +241,74 @@ def plot_hunger_multi_pathfinding():
     plt.savefig(OUT / "6_larvae_hunger_multi_pathfinding.png", dpi=150, bbox_inches="tight")
     plt.close()
 
+def run_errors(series):
+    """Omit uncertainty when there are no repeated runs."""
+    return series if series.notna().any() else None
+
+
 def plot_foraging_efficiency():
     df = load_csvs("output_logs/*/aggregate_results_*.csv")
     if df.empty:
-        print("[SKIP] No aggregate data.")
         return
-
-    if not {"mean_distance_per_feed_larvae", "mean_distance_per_feed_wasp", "num_wasps"}.issubset(df.columns):
-        print("[WARN] Missing columns for normalization.")
-        return
-
-    # Added normalization: divide distance per feed by number of wasps
-    df["mean_distance_per_feed_wasp"] = df["mean_distance_per_feed_wasp"] / df["num_wasps"].replace(0, np.nan)
-
-    agg = df.groupby("__mode__", as_index=False).agg(
-        mean_dist_larvae=("mean_distance_per_feed_larvae", "mean"),
-        std_dist_larvae=("mean_distance_per_feed_larvae", "std"),
-        mean_dist_wasp=("mean_distance_per_feed_wasp", "mean"),
-        std_dist_wasp=("mean_distance_per_feed_wasp", "std"),
-        mean_eff=("feeding_efficiency", "mean"),
-        std_eff=("feeding_efficiency", "std")
-    )
-
-    x = np.arange(len(agg["__mode__"]))
+    columns = ["mean_distance_per_feed_larvae", "mean_distance_per_feed_wasp",
+               "final_low_hunger_fraction"]
+    agg = summarize_runs(df, columns)
+    x = np.arange(len(agg))
+    fig, ax = plt.subplots(figsize=(8, 5))
     width = 0.35
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.bar(x - width/2, agg["mean_dist_larvae"], width,
-           yerr=agg["std_dist_larvae"], label="Larvae Feed", color="#56B4E9", alpha=0.9, capsize=4)
-    ax.bar(x + width/2, agg["mean_dist_wasp"], width,
-           yerr=agg["std_dist_wasp"], label="Wasp Feed (per wasp)", color="#E69F00", alpha=0.9, capsize=4)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(agg["__mode__"].str.capitalize(), rotation=15)
-    ax.set_ylabel("Mean distance per feeding (normalized per wasp)")
-    ax.set_title("Distance per feeding (Larvae vs Wasp) across algorithms")
+    for offset, column, label, color in (
+        (-width/2, columns[0], "Larval feeding event", "#56B4E9"),
+        (width/2, columns[1], "Adult transfer event", "#E69F00"),
+    ):
+        ax.bar(x + offset, agg[column + "_mean"], width,
+               yerr=run_errors(agg[column + "_std"]), label=label, color=color, capsize=4)
+    ax.set_xticks(x, agg["__mode__"], rotation=15)
+    ax.set(ylabel="Total adult distance / successful event",
+           title="Adult travel cost per successful feeding event")
     ax.legend()
-    plot_caption()
+    plot_caption("Colors identify event types; missing costs mean no corresponding events.")
     plt.tight_layout()
     plt.savefig(OUT / "7_foraging_efficiency_compare.png", dpi=150, bbox_inches="tight")
     plt.close()
 
-    plt.figure(figsize=(6, 4))
-    plt.bar(agg["__mode__"], agg["mean_eff"], yerr=agg["std_eff"],
-            color=[COLORS.get(m, "gray") for m in agg["__mode__"]], capsize=4)
-    plt.ylabel("Feeding efficiency")
-    plt.title("Feeding efficiency by algorithm")
-    plt.xticks(rotation=15)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    column = "final_low_hunger_fraction"
+    ax.bar(agg["__mode__"], agg[column + "_mean"],
+           yerr=run_errors(agg[column + "_std"]),
+           color=[get_color(mode) for mode in agg["__mode__"]], capsize=4)
+    ax.set(ylabel="Fraction of larvae with final hunger < 1.5",
+           title="Final low-hunger fraction (a state measure)", ylim=(0, 1))
+    ax.tick_params(axis="x", rotation=15)
     plot_caption()
     plt.tight_layout()
     plt.savefig(OUT / "7b_feeding_efficiency_by_algorithm.png", dpi=150, bbox_inches="tight")
     plt.close()
 
 
-# 7️ Req 8: Foraging frequency
 def plot_foraging_frequency():
     df = load_csvs("output_logs/*/aggregate_results_*.csv")
     if df.empty:
-        print("[SKIP] No aggregate data for frequency.")
         return
-
-    # Check both columns exist
-    if not {"mean_feed_freq_wasp", "mean_feed_freq_larvae"}.issubset(df.columns):
-        print("[WARN] Missing feed frequency columns in aggregate data.")
-        print("Expected mean_feed_freq_wasp / mean_feed_freq_larvae")
-        return
-
-    # Group by mode to get mean/std
-    agg = df.groupby("__mode__", as_index=False).agg(
-        mean_feed_wasp=("mean_feed_freq_wasp", "mean"),
-        std_feed_wasp=("std_feed_freq_wasp", "std"),
-        mean_feed_larvae=("mean_feed_freq_larvae", "mean"),
-        std_feed_larvae=("std_feed_freq_larvae", "std"),
-    )
-
-    print(agg[["__mode__", "mean_feed_wasp", "std_feed_wasp"]])
-
-
-    # Plot side-by-side bars for comparison
-    x = np.arange(len(agg["__mode__"]))
-    width = 0.35
-
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.bar(x - width/2, agg["mean_feed_wasp"], width, 
-           yerr=agg["std_feed_wasp"], 
-           label="Wasp Feed Frequency", 
-           color="#E69F00", alpha=0.9, capsize=4)
-    ax.bar(x + width/2, agg["mean_feed_larvae"], width, 
-           yerr=agg["std_feed_larvae"], 
-           label="Larvae Feed Frequency", 
-           color="#56B4E9", alpha=0.9, capsize=4)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(agg["__mode__"].str.capitalize(), rotation=20)
-    ax.set_ylabel("Feed frequency (mean ± std)")
-    ax.set_title("Foraging frequency comparison: Wasp vs Larvae")
+    columns = ["mean_feed_rate_wasp", "mean_feed_rate_larvae"]
+    agg = summarize_runs(df, columns)
+    x, width = np.arange(len(agg)), 0.35
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for offset, column, label, color in (
+        (-width/2, columns[0], "Adult transfers", "#E69F00"),
+        (width/2, columns[1], "Larval feeds", "#56B4E9"),
+    ):
+        ax.bar(x + offset, agg[column + "_mean"], width,
+               yerr=run_errors(agg[column + "_std"]), label=label, color=color, capsize=4)
+    ax.set_xticks(x, agg["__mode__"], rotation=15)
+    ax.set(ylabel="Successful events per adult per step", title="Feeding event rates")
     ax.legend()
-    plot_caption()
+    plot_caption("Colors identify event types.")
+    plt.figtext(0.5, -0.09, "Error bars: between-run SD; omitted when fewer than 2 runs.",
+                ha="center", fontsize=8, color="gray")
     plt.tight_layout()
     plt.savefig(OUT / "8_foraging_frequency_compare.png", dpi=150, bbox_inches="tight")
     plt.close()
+
 
 # 7c: Total distance traveled (feeders) vs total larvae fed
 def plot_total_distance_vs_feed():
@@ -389,9 +324,9 @@ def plot_total_distance_vs_feed():
         plt.scatter(grp["distance_per_wasp_per_step"], grp["feed_per_larva"],
                     s=60, color=color, alpha=0.7, label=mode.capitalize())
 
-    plt.xlabel("Distance per wasp per step")
-    plt.ylabel("Feeding per larva")
-    plt.title("7c. Normalized: Distance per Wasp vs Feeding per Larva")
+    plt.xlabel("Distance per feeder-role step")
+    plt.ylabel("Feeder larval feeds per larva")
+    plt.title("7c. Normalized: Feeder distance per step vs larval feeding")
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.legend(title="Pathfinding Mode")
     plot_caption()
@@ -423,12 +358,13 @@ def plot_total_distance_vs_feed_avg():
     for _, row in mean_df.iterrows():
         color = COLORS.get(row["__mode__"], "gray")
         plt.errorbar(row["mean_x"], row["mean_y"],
-                     xerr=row["std_x"], yerr=row["std_y"],
+                     xerr=row["std_x"] if pd.notna(row["std_x"]) else None,
+                     yerr=row["std_y"] if pd.notna(row["std_y"]) else None,
                      fmt='o', color=color, label=row["__mode__"].capitalize(),
                      capsize=4)
-    plt.xlabel("Distance per wasp per step")
-    plt.ylabel("Feeding per larva")
-    plt.title("7c1. Averaged: Distance per Wasp vs Feeding per Larva")
+    plt.xlabel("Distance per feeder-role step")
+    plt.ylabel("Feeder larval feeds per larva")
+    plt.title("7c1. Averaged: Feeder distance per step vs larval feeding")
     plt.legend(title="Pathfinding Mode")
     plot_caption()
     plt.tight_layout()
@@ -449,9 +385,9 @@ def plot_walk_to_feed_efficiency():
         plt.scatter(grp["distance_per_wasp_per_step"], grp["norm_walk_to_feed_eff"],
                     s=60, color=color, alpha=0.7, label=mode.capitalize())
 
-    plt.xlabel("Distance per wasp per step")
-    plt.ylabel("Normalized feeding efficiency (feeds per distance)")
-    plt.title("7d. Normalized: Walk-to-Feed Efficiency per Wasp per Step")
+    plt.xlabel("Distance per feeder-role step")
+    plt.ylabel("Feeder larval feeds per distance unit")
+    plt.title("7d. Normalized: Feeder larval feeds per distance unit")
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.legend(title="Pathfinding Mode")
     plot_caption()
@@ -483,12 +419,13 @@ def plot_walk_to_feed_efficiency_avg():
     for _, row in mean_df.iterrows():
         color = COLORS.get(row["__mode__"], "gray")
         plt.errorbar(row["mean_x"], row["mean_y"],
-                     xerr=row["std_x"], yerr=row["std_y"],
+                     xerr=row["std_x"] if pd.notna(row["std_x"]) else None,
+                     yerr=row["std_y"] if pd.notna(row["std_y"]) else None,
                      fmt='o', color=color, label=row["__mode__"].capitalize(),
                      capsize=4)
-    plt.xlabel("Distance per wasp per step")
-    plt.ylabel("Normalized feeding efficiency (feeds per distance)")
-    plt.title("7d1. Averaged: Walk-to-Feed Efficiency per Wasp per Step")
+    plt.xlabel("Distance per feeder-role step")
+    plt.ylabel("Feeder larval feeds per distance unit")
+    plt.title("7d1. Averaged: Feeder larval feeds per distance unit")
     plt.legend(title="Pathfinding Mode")
     plot_caption()
     plt.tight_layout()
@@ -509,9 +446,9 @@ def plot_total_steps_vs_feed():
         plt.scatter(grp["norm_steps"], grp["feed_per_larva"],
                     s=60, color=color, alpha=0.7, label=mode.capitalize())
 
-    plt.xlabel("Steps per wasp (normalized)")
-    plt.ylabel("Feeding per larva")
-    plt.title("7e. Normalized: Steps per Wasp vs Feeding per Larva")
+    plt.xlabel("Feeder-role steps per participating adult")
+    plt.ylabel("Feeder larval feeds per larva")
+    plt.title("7e. Normalized: Feeder exposure vs larval feeding")
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.legend(title="Pathfinding Mode")
     plot_caption()
@@ -543,12 +480,13 @@ def plot_total_steps_vs_feed_avg():
     for _, row in mean_df.iterrows():
         color = COLORS.get(row["__mode__"], "gray")
         plt.errorbar(row["mean_x"], row["mean_y"],
-                     xerr=row["std_x"], yerr=row["std_y"],
+                     xerr=row["std_x"] if pd.notna(row["std_x"]) else None,
+                     yerr=row["std_y"] if pd.notna(row["std_y"]) else None,
                      fmt='o', color=color, label=row["__mode__"].capitalize(),
                      capsize=4)
-    plt.xlabel("Steps per wasp (normalized)")
-    plt.ylabel("Feeding per larva")
-    plt.title("7e1. Averaged: Steps per Wasp vs Feeding per Larva")
+    plt.xlabel("Feeder-role steps per participating adult")
+    plt.ylabel("Feeder larval feeds per larva")
+    plt.title("7e1. Averaged: Feeder exposure vs larval feeding")
     plt.legend(title="Pathfinding Mode")
     plot_caption()
     plt.tight_layout()
@@ -586,6 +524,9 @@ def plot_wasp_trajectory():
 
 def main():
     
+    aggregates = load_csvs("output_logs/*/aggregate_results_*.csv")
+    if not aggregates.empty:
+        validate_schema(aggregates)
     print(f"[INFO] Saving charts into: {OUT.resolve()}")
     plot_larvae_hunger_over_time()
     plot_larvae_distance_vs_hunger()

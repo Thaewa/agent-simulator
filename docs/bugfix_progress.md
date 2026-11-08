@@ -116,8 +116,19 @@ Validation: 12 new tests cover probability endpoints/thresholds, empty recipient
 
 Probability correction and exclusion of self trials change random-stream consumption and feeding dynamics. Historical graphs must not be relabeled as post-fix results. The existing feeding-efficiency and final-role aggregate formulas have not yet been redefined in this step.
 
+## Step 8: metric units, activity-time roles and run uncertainty
+
+- Add the versioned `activity_roles_v2` schema and definitions in `docs/metrics.md`.
+- Track feeder exposure, movement and larval feeds at action time, rather than selecting final-role agents and using their whole lifetime activity.
+- Keep explicit event counts and calculate actual rates per adult per completed step. Distance cost is a ratio of all-adult total travel to successful events, including adults with zero feeds. Undefined denominators produce missing values, not favorable zero costs.
+- Label the final hunger-threshold fraction as a state measure. It is not a measure of route or energetic efficiency.
+- Correct feeder distance per step normalization and use run-level means for between-run SD; omit SD error bars for a single run. Preserve run ID in spatial grouping and reject duplicate mode/run IDs.
+- Reject historical metric schemas in the updated plotting pipeline. Old results remain intact with their saved source versions. New experiment manifests serialize undefined metric values as JSON null.
+
+Validation: all 78 tests pass and the five-mode seeded smoke check passes. A separate two-step generated-nest run checks the complete plotting pipeline; this is not a new 500-step comparison. No movement, feeding, role-switch or random-draw rule was changed in this step.
+
 ## Required next steps before interpreting algorithm performance
 
-1. Define and test aggregate/plot metric semantics: current "frequency" values are lifetime counts per wasp; frequency plotting uses the standard deviation of within-run standard deviations; some metrics select final-role agents but use lifetime counters; feeding_efficiency is a final hunger-threshold fraction; normalized distance applies an extra population divisor. These require a separate metrics checkpoint rather than silently changing definitions.
-2. Review remaining collision behavior and rerun generated nests after completing the next audit checkpoint. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate the role and feeding-probability fixes.
+1. Review remaining collision behavior and run-state identity/geometry edge cases before interpreting algorithm performance.
+2. Rerun generated nests after completing that audit checkpoint. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate the role, feeding-probability and metric fixes.
 3. Use multiple independent seeds and controlled historical replays for performance comparisons. Current single-seed plots are exploratory.
