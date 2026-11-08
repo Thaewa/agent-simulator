@@ -87,8 +87,22 @@ Validation: ten new food-boundary tests reproduce overflow, wrong forage increme
 
 The previously reviewed experiment `seed_20261108_20261108T021313_345591Z` is a pre-food-fix result and remains intact for inspection. A fresh `python run_experiment.py` invocation writes a new experiment folder and must be used for post-food-fix results. No full 500-step rerun was performed during this step.
 
+## Step 6: role-switch scheduling and consistent state logs
+
+Implemented after the user pushed checkpoint `43417c9` to `fix/tsp-validation`:
+
+- Pass the current completed step to updateRoles, rather than the simulation horizon. A 500-step horizon previously made the frequency-100 gate true on every step; a nondivisible horizon made it false on every step.
+- Apply the colony-wide change quota with `< max_role_changes`, preventing an extra transition after the quota is exhausted. The counter is shared across agents and resets for each step, with eligibility only at scheduled reassessments.
+- Treat the two configured role-change probabilities as probabilities of changing: `draw < probability`. Previously `draw > probability` inverted their meaning. Eligibility constraints still apply.
+- Restore the configured role-persistence interval after a successful switch. Decrement an existing cooldown before considering a switch so consecutive changes must be separated by at least the configured number of steps; do not decrement a newly restored interval that tick.
+- Treat the configured forager-fraction boundaries as inclusive hard bounds, retaining at least one forager. This is an explicit boundary interpretation, replacing strict inequalities that excluded equality.
+- Define the default upper forager threshold in Simulator itself; generator configuration can still override it. A directly constructed simulator previously lacked this attribute.
+- Emit adult state logs in a separate pass after all movement, metabolism and role updates, so adult role counts and nest role counts refer to the same completed step. Adult food/hunger fields now also represent post-metabolism state. Historical logs are not rewritten.
+
+Validation: 12 new role tests reproduce clock, probability, quota, boundary, cooldown and role-log inconsistencies before the fixes. All 55 tests pass after the changes; the five-mode 20-step seeded smoke check passes with identical repeat logs and unchanged baseline files. No 500-step rerun was performed for this step. The short smoke check itself does not reach the default step-100 reassessment; dedicated integration tests use a two-step frequency to exercise the actual simulation call and state logging.
+
 ## Required next steps before interpreting algorithm performance
 
-1. Repeat the generated-nest experiment with the food fix; review its all-state capacity checks and plots. `run_experiment.py` already records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation.
-2. Review feeding-event accounting/probability, role scheduling, collision and metric semantics independently of route construction before interpreting algorithm performance.
+1. Review feeding-event accounting/probability, collision and metric semantics independently of route construction. A no-recipient feedNearby call currently returns None, which can break feeding-event list extension if an edge-case scene has no feeders; this is pending a separate feeding audit.
+2. Rerun generated nests after completing the next audit checkpoint. `run_experiment.py` records a seed, shared initial instance, source snapshot, dependencies and separate output folders; it currently runs one seed per invocation. Previous 500-step plots predate the role fixes.
 3. Use multiple independent seeds and controlled historical replays for performance comparisons. Current single-seed plots are exploratory.

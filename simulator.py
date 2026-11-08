@@ -370,7 +370,7 @@ class Simulator:
 
     :param forager_ratio: Ratio of forager wasps to total wasps.
     :type forager_ratio: float
-    :param max_role_changes: Maximum number of role changes allowed for a wasp.
+    :param max_role_changes: Maximum number of colony-wide changes at each scheduled reassessment.
     :type max_role_changes: int
     :param role_changes_frequency: Frequency at which role changes are considered.
     :type role_changes_frequency: int
@@ -393,7 +393,7 @@ class Simulator:
     :vartype forage: List[numpy.ndarray]
     :ivar forager_ratio: Target ratio of foragers among wasps.
     :vartype forager_ratio: float
-    :ivar max_role_changes: Max role changes allowed per ``role_changes_frequency`` window.
+    :ivar max_role_changes: Max colony-wide changes at each scheduled reassessment.
     :vartype max_role_changes: int
     :ivar role_changes_frequency: Steps between role reassessment opportunities.
     :vartype role_changes_frequency: int
@@ -401,7 +401,7 @@ class Simulator:
     :vartype number_of_bouts: int
     """
 
-    def __init__(self, forager_ratio: float=0.10, max_role_changes: int=2, role_changes_frequency: int=100,number_of_bouts:int=32) -> None:
+    def __init__(self, forager_ratio: float=0.10, max_role_changes: int=2, role_changes_frequency: int=100,number_of_bouts:int=32, potential_feeder_to_forager_buffer: float=0.2) -> None:
         """Initialize the simulator and default state."""
         self.currentTime: int = 0
         self.agents: List[Agent] = []
@@ -410,6 +410,7 @@ class Simulator:
         self.grid: Optional[np.ndarray] = None
         self.forage: List[np.ndarray] = []
         self.forager_ratio: float = forager_ratio
+        self.potential_feeder_to_forager = forager_ratio + potential_feeder_to_forager_buffer
         self.max_role_changes: int = max_role_changes
         self.role_changes_frequency: int = role_changes_frequency
         self.number_of_bouts = number_of_bouts
@@ -779,37 +780,39 @@ class Simulator:
                 if isinstance(agent, Wasp):
                     # With the previously stored next step per agent, move the agent
                     self.moveAgent(agent)
-                    # Log agents AFTER they move (timestamp still current)
-                    self.logger.log_agent(
-                        timestamp=self.currentTime,
-                        agent_id=agent.id,
-                        agent_role=str(agent.role.name if isinstance(agent, Wasp) else "Larvae"),
-                        action=agent.storedEvents[-1] if agent.storedEvents else "none",
-                        target_id=self._parse_target_from_event(agent.storedEvents[-1]) if agent.storedEvents else "",
-                        position_x=agent.x,
-                        position_y=agent.y,
-                        hunger_level=getattr(agent, "hunger", 0),
-                        hunger_cue=getattr(agent, "hunger_cue", 0),
-                        food_stored=getattr(agent, "food", 0),
-                        nest_layer=(
-                            1 if isinstance(agent, Larvae)
-                            else 2 if agent.role == WaspRole.FEEDER
-                            else 3
-                        ),
-                        larvae_hunger_avg=self._calc_avg_hunger(AgentType.LARVAE),
-                        total_food_in_nest=self._calc_total_food(),
-                        rush_intensity=self._estimate_rush(),
-                       exploration_bias=0.0
-                    )
                 # Update the agent hunger and food
                 self.updateAgent(agent)
                 if isinstance(agent, Wasp):
                     # Maintain correct ratio of feeders/foragers per step
                     # Update if the hunger cues are either high or low
                     count_roles, total_foragers = self.updateRoles(
-                        t, agent, count_roles, total_foragers, total_wasp
+                        self.currentTime, agent, count_roles, total_foragers, total_wasp
                     )
                 j += 1
+
+            for agent in wasps:
+                # Record all adult states after movement, metabolism and role updates.
+                self.logger.log_agent(
+                    timestamp=self.currentTime,
+                    agent_id=agent.id,
+                    agent_role=str(agent.role.name if isinstance(agent, Wasp) else "Larvae"),
+                    action=agent.storedEvents[-1] if agent.storedEvents else "none",
+                    target_id=self._parse_target_from_event(agent.storedEvents[-1]) if agent.storedEvents else "",
+                    position_x=agent.x,
+                    position_y=agent.y,
+                    hunger_level=getattr(agent, "hunger", 0),
+                    hunger_cue=getattr(agent, "hunger_cue", 0),
+                    food_stored=getattr(agent, "food", 0),
+                    nest_layer=(
+                        1 if isinstance(agent, Larvae)
+                        else 2 if agent.role == WaspRole.FEEDER
+                        else 3
+                    ),
+                    larvae_hunger_avg=self._calc_avg_hunger(AgentType.LARVAE),
+                    total_food_in_nest=self._calc_total_food(),
+                    rush_intensity=self._estimate_rush(),
+                   exploration_bias=0.0
+                )
 
             # Log nest and larvae state for the current completed step.
             self.logger.log_nest(
@@ -1056,7 +1059,7 @@ class Simulator:
         """
         Possibly update a wasp's role based on cues, persistence, and global ratios.
 
-        :param t: Current time horizon used for role-change scheduling.
+        :param t: Current completed simulation step used for role-change scheduling.
         :type t: int
         :param agent: Wasp under consideration.
         :type agent: Wasp
@@ -1069,33 +1072,37 @@ class Simulator:
         :return: Updated ``(count_roles, total_foragers)``.
         :rtype: Tuple[int, int]
         """
-        # If it is time to change roles and we have not reached the maximum number of role changes let role changes happen 
-        if t % self.role_changes_frequency == 0 and count_roles <= self.max_role_changes:
+        # Count elapsed steps before considering a new change. A successful
+        # switch then starts a full cooldown, without decrementing it that tick.
+        if agent.rolePersistence > 0:
+            agent.rolePersistence -= 1
+        if self.role_changes_frequency <= 0:
+            raise ValueError("role_changes_frequency must be positive")
+        if (t > 0 and t % self.role_changes_frequency == 0
+                and count_roles < self.max_role_changes
+                and agent.rolePersistence == 0 and agent.inOuterNest()):
             # If agent is a feeder and the hunger cues are high and there are not too many foragers let the feeder become a forager
             if (
                 agent.role == WaspRole.FEEDER
                 and agent.hungerCuesHigh()
-                and ((total_foragers + 1) / total_wasp) < (self.potential_feeder_to_forager)
+                and ((total_foragers + 1) / total_wasp) <= self.potential_feeder_to_forager
             ):
-                if np.random.random() > agent.feeder_to_forager_probability and agent.rolePersistence == 0 and agent.inOuterNest():
+                if np.random.random() < agent.feeder_to_forager_probability:
                     agent.role = WaspRole.FORAGER
                     total_foragers += 1
                     agent.updateRolePersistence()
                     count_roles += 1
             # If agent is a forager and the hunger cues are low and there are not too little foragers let the forager become a feeder
-            if (
+            elif (
                 agent.role == WaspRole.FORAGER
                 and agent.hungerCuesLow()
-                and ((total_foragers - 1) / total_wasp) > max((1 / total_wasp), (self.forager_ratio))
+                and ((total_foragers - 1) / total_wasp) >= max((1 / total_wasp), self.forager_ratio)
             ):
-                if np.random.random() > agent.forager_to_feeder_probability and agent.rolePersistence == 0 and agent.inOuterNest():
+                if np.random.random() < agent.forager_to_feeder_probability:
                     agent.role = WaspRole.FEEDER
                     total_foragers -= 1
                     agent.updateRolePersistence()
                     count_roles += 1
-        # Update role persistence of agent to allow role changes
-        if agent.rolePersistence > 0:
-            agent.rolePersistence -= 1
         return count_roles, total_foragers
 
     def clearGradients(self) -> None:

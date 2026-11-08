@@ -260,7 +260,7 @@ class Wasp(Agent):
     :vartype prevStep: List[int] | None
     :ivar path: Planned path (sequence of grid nodes) for shortest/TSP strategies.
     :vartype path: list | None
-    :ivar rolePersistenceUpdate: Increment applied to ``rolePersistence``.
+    :ivar rolePersistenceUpdate: Configured cooldown restored after a role change.
     :vartype rolePersistenceUpdate: int
     :ivar unloadOnlyChance: Probability of unloading only to larvae when foraging and cues are high.
     :vartype unloadOnlyChance: float
@@ -327,7 +327,7 @@ class Wasp(Agent):
         self.hungerCueDecay = hunger_cue_decay
         self.prevStep = self.getPosition()
         self.path = None
-        self.rolePersistenceUpdate = 0
+        self.rolePersistenceUpdate = role_persistence
         self.unloadOnlyChance = unload_only_chance
         self.hungerCuesLowThreshold = hunger_cues_low_threshold
         self.hungerCuesHighThreshold = hunger_cues_high_threshold
@@ -354,12 +354,12 @@ class Wasp(Agent):
 
     def updateRolePersistence(self) -> None:
         """
-        Update the role persistence by adding ``rolePersistenceUpdate``.
+        Reset the cooldown to the configured ``rolePersistenceUpdate`` interval.
         
         :return: ``None``.
         :rtype: None
         """
-        self.rolePersistence += self.rolePersistenceUpdate
+        self.rolePersistence = self.rolePersistenceUpdate
 
     def updateHungerCueRange(self) -> None:
         """
